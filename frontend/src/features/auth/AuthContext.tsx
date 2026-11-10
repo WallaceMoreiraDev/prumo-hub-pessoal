@@ -8,13 +8,15 @@ import {
   type ReactNode,
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import {
+  resolveSignUpStatus,
+  type SignUpResult,
+} from '@/features/auth/auth.utils';
 import { getAuthErrorMessage } from '@/lib/errorMessages';
 import { queryClient } from '@/lib/queryClient';
 import { getSupabaseClient } from '@/lib/supabase';
 
-export interface SignUpResult {
-  requiresEmailConfirmation: boolean;
-}
+export type { SignUpResult, SignUpStatus } from '@/features/auth/auth.utils';
 
 export interface AuthContextValue {
   session: Session | null;
@@ -104,12 +106,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error(getAuthErrorMessage(error));
       }
 
-      if (data.session) {
+      const outcome = resolveSignUpStatus(data);
+
+      if (outcome.status === 'authenticated' && data.session) {
         setSession(data.session);
-        return { requiresEmailConfirmation: false };
       }
 
-      return { requiresEmailConfirmation: true };
+      return outcome;
     },
     []
   );

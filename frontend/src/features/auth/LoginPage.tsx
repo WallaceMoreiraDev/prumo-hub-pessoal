@@ -114,7 +114,22 @@ export function LoginPage() {
     try {
       const result = await signUp(values.email, values.password);
 
-      if (result.requiresEmailConfirmation) {
+      if (result.status === 'already_registered') {
+        setPendingConfirmationEmail(null);
+        signUpForm.reset({
+          email: values.email,
+          password: '',
+          confirmPassword: '',
+        });
+        loginForm.setValue('email', values.email);
+        setActiveTab('login');
+        toast.error(
+          'Já existe uma conta cadastrada com este endereço de e-mail. Entre com sua senha abaixo.'
+        );
+        return;
+      }
+
+      if (result.status === 'email_confirmation_required') {
         setPendingConfirmationEmail(values.email);
         signUpForm.reset();
         loginForm.setValue('email', values.email);

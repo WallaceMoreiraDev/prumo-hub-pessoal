@@ -156,7 +156,11 @@ export function getAuthErrorMessage(error: unknown): string {
     if (rawMessage.includes('unable to validate email address')) {
       return 'Informe um endereço de e-mail válido.';
     }
-    if (rawMessage.includes('rate limit') || rawMessage.includes('too many requests')) {
+    if (
+      rawMessage.includes('rate limit') ||
+      rawMessage.includes('too many requests') ||
+      rawMessage.includes('only request this after')
+    ) {
       return 'Muitas tentativas em sequência. Aguarde alguns instantes antes de tentar novamente.';
     }
     if (rawMessage.includes('failed to fetch') || rawMessage.includes('network')) {
