@@ -1,6 +1,14 @@
 import type { QuestaoResultado, SimuladoStatus } from './enums.types';
 import type { TemaSummaryDto } from './temas.types';
 
+export const SIMULADO_SORT_OPTIONS = ['recent', 'oldest'] as const;
+
+export type SimuladoSortBy = (typeof SIMULADO_SORT_OPTIONS)[number];
+
+export const SIMULADO_PDF_MAX_SIZE_BYTES = 20 * 1024 * 1024;
+
+export const SIMULADO_PDF_SIGNED_URL_TTL_SECONDS = 3600;
+
 export interface SimuladoPensamentoDto {
   id: string;
   userId: string;
@@ -39,6 +47,15 @@ export interface SimuladoDto {
   finishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SimuladoListItemDto extends SimuladoDto {
+  totalQuestoes: number;
+  totalQuestoesClassificadas: number;
+  totalAcertos: number;
+  totalParciais: number;
+  totalErros: number;
+  totalPensamentos: number;
 }
 
 export interface SimuladoDetalheDto extends SimuladoDto {

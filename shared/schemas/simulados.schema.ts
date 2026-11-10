@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { QUESTAO_RESULTADOS, SIMULADO_STATUSES } from '../types/enums.types';
+import { SIMULADO_SORT_OPTIONS } from '../types/simulados.types';
 import { PaginationQuerySchema, UuidSchema } from './common.schema';
 
 export const CreateSimuladoSchema = z.object({
@@ -40,6 +41,21 @@ export const UpdateSimuladoSchema = z
 
 export const SimuladosQuerySchema = PaginationQuerySchema.extend({
   status: z.enum(SIMULADO_STATUSES).optional(),
+  sortBy: z
+    .enum(SIMULADO_SORT_OPTIONS, {
+      error: 'Ordenação inválida. Utilize recent ou oldest.',
+    })
+    .default('recent'),
+});
+
+export const SimuladoQuestaoParamsSchema = z.object({
+  id: UuidSchema,
+  questaoId: UuidSchema,
+});
+
+export const SimuladoPensamentoParamsSchema = z.object({
+  id: UuidSchema,
+  pensamentoId: UuidSchema,
 });
 
 export const CreateSimuladoQuestaoSchema = z.object({
@@ -184,7 +200,14 @@ export const ClassificarQuestaoSimuladoSchema = z
 
 export type CreateSimuladoInput = z.infer<typeof CreateSimuladoSchema>;
 export type UpdateSimuladoInput = z.infer<typeof UpdateSimuladoSchema>;
+export type SimuladosQueryInput = z.input<typeof SimuladosQuerySchema>;
 export type SimuladosQuery = z.infer<typeof SimuladosQuerySchema>;
+export type SimuladoQuestaoParamsInput = z.infer<
+  typeof SimuladoQuestaoParamsSchema
+>;
+export type SimuladoPensamentoParamsInput = z.infer<
+  typeof SimuladoPensamentoParamsSchema
+>;
 export type CreateSimuladoQuestaoInput = z.infer<typeof CreateSimuladoQuestaoSchema>;
 export type UpdateSimuladoQuestaoInput = z.infer<typeof UpdateSimuladoQuestaoSchema>;
 export type CreateSimuladoPensamentoInput = z.infer<typeof CreateSimuladoPensamentoSchema>;
