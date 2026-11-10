@@ -45,5 +45,5 @@ O sistema é multi-usuário (permitindo que cada estudante tenha sua própria co
 
 - **Estrutura:** Monorepo TypeScript estrito (`/frontend`, `/backend`, `/shared`, `/supabase`).
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS, shadcn/ui, Lucide Icons, TanStack Query, React Hook Form + Zod.
-- **Backend (BFF):** Node.js em Arquitetura em Camadas (Routes, Controllers, Services, Repositories) com validação universal via Zod.
+- **Backend (BFF):** Hono em Cloudflare Workers (Arquitetura em Camadas: Routes, Controllers, Services, Repositories) com validação universal via Zod e DTOs compartilhados.
 - **Banco de Dados, Autenticação e Arquivos:** Supabase (PostgreSQL + Auth + Storage para PDFs de simulados) com isolamento total por usuário via Row Level Security (RLS) e operações transacionais atômicas.

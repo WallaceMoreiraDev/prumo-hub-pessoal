@@ -1,6 +1,6 @@
 # Manual de Padrões de Engenharia de Software e Diretrizes de Código
 
-> **DOCUMENTO MANDATÓRIO:** Este manual define as regras absolutas de arquitetura, regras de negócio, qualidade e segurança para o desenvolvimento do **Prumo Hub Pessoal** (`React + Node.js + Supabase`). A prioridade máxima é a construção de um sistema robusto, seguro, sem falhas silenciosas, sem estados dessincronizados e sem código espaguete. **O não cumprimento destas diretrizes (bem como do [STYLEGUIDE.md](./STYLEGUIDE.md)) resultará em código inaceitável e bloqueio imediato.**
+> **DOCUMENTO MANDATÓRIO:** Este manual define as regras absolutas de arquitetura, regras de negócio, qualidade e segurança para o desenvolvimento do **Prumo Hub Pessoal** (`React + Hono + Cloudflare Workers + Supabase`). A prioridade máxima é a construção de um sistema robusto, seguro, sem falhas silenciosas, sem estados dessincronizados e sem código espaguete. **O não cumprimento destas diretrizes (bem como do [STYLEGUIDE.md](./STYLEGUIDE.md)) resultará em código inaceitável e bloqueio imediato.**
 >
 > **NOME OFICIAL DA APLICAÇÃO:** O nome oficial do aplicativo e produto é **Prumo Hub Pessoal** (ou abreviado como **Prumo**). Todo manifesto, título de página, metatags e comunicações visuais devem seguir rigorosamente esta nomenclatura.
 
@@ -19,13 +19,13 @@
 
 ---
 
-## 2. Arquitetura Geral, Segurança Multi-Usuário e Persistência (Node.js + Supabase)
+## 2. Arquitetura Geral, Segurança Multi-Usuário e Persistência (Hono + Cloudflare Workers + Supabase)
 
-* **Padrão Backend-for-Frontend (BFF):** O Frontend em React **NÃO DEVE** fazer requisições diretas de manipulação de dados de negócio para o Supabase. Toda comunicação de domínio passa EXCLUSIVAMENTE através da API Node.js.
+* **Padrão Backend-for-Frontend (BFF):** O Frontend em React **NÃO DEVE** fazer requisições diretas de manipulação de dados de negócio para o Supabase. Toda comunicação de domínio passa EXCLUSIVAMENTE através da API **Hono** rodando em **Cloudflare Workers**.
 * **Isolamento Multi-Usuário e RLS (Row Level Security) — CRÍTICO:**
   * Cada estudante possui sua própria conta isolada (`user_id`), podendo utilizar a plataforma para o seu objetivo específico (OBI, Programação Competitiva, ENEM, Vestibulares, etc.).
   * O Frontend envia o JWT de sessão via cabeçalho HTTP `Authorization: Bearer <token>`.
-  * O Node.js **DEVE** instanciar o cliente do Supabase *por requisição* aplicando este token, garantindo que as políticas de RLS filtrem estritamente por `auth.uid() = user_id`.
+  * O Backend Hono **DEVE** instanciar o cliente do Supabase *por requisição* aplicando este token (com variáveis obtidas de `c.env`), garantindo que as políticas de RLS filtrem estritamente por `auth.uid() = user_id`.
   * O uso da `service_role_key` (Admin SDK) é **ESTRITAMENTE PROIBIDO** em rotas de clientes comuns, pois burla o RLS.
 * **Database Migrations & Transações Atômicas (RPCs):**
   * Nenhuma alteração estrutural de banco de dados (tabelas, colunas, RLS, functions, buckets) deve ser feita manualmente no painel web. O uso exclusivo de **Supabase Migrations CLI** (`/supabase/migrations`) é obrigatório.
@@ -86,26 +86,26 @@ Nenhuma entidade pode ter apenas criação e listagem. É obrigatório implement
   * A API **NUNCA** deve retornar mensagens soltas em texto para exibição direta.
   * O backend deve retornar **Códigos de Erro Tipados** (ex.: `SIMULADO_NOT_FOUND`, `INVALID_MANUAL_ERROR_ORIGIN`, `VALIDATION_ERROR`).
   * O Frontend deve possuir um dicionário centralizado (`errorMessages.ts`) que traduz os códigos em mensagens claras em Português.
-* **Manejo de Erros no Backend e Zod:**
+* **Manejo de Erros no Hono e Zod:**
   * Erros de validação do Zod devem retornar `{ "success": false, "code": "VALIDATION_ERROR", "details": [{ "path": "...", "message": "..." }] }`.
-  * Exceções de regra de negócio nos Services devem lançar `throw new AppError("CODE", statusCode)` capturadas por um **Middleware Global de Erros**.
-* **Observabilidade e Segurança:**
-  * Utilize um *logger* estruturado (Pino ou Winston) em vez de `console.log` solto.
+  * Exceções de regra de negócio nos Services devem lançar `throw new AppError("CODE", statusCode)` capturadas pelo **Error Handler Global (`app.onError`)** do Hono.
+* **Observabilidade e Segurança (Cloudflare Workers):**
+  * Utilize um *logger* estruturado em JSON compatível com Cloudflare Workers (`hono/logger` + log estruturado com sanitização, evitando bibliotecas Node-only incompatíveis com o runtime Edge) em vez de `console.log` com objetos crus.
   * Jamais exponha tokens, senhas ou chaves nos logs.
-  * Configure `Helmet`, `CORS` estrito e `Rate Limiting` na API Node.js.
+  * Configure `secureHeaders` (`hono/secure-headers`), `cors` estrito (`hono/cors` via `CORS_ORIGIN`) e Rate Limiting adequado ao ambiente Cloudflare Workers (WAF / Rate Limiting binding na Edge).
 
 ---
 
-## 5. Padrões de Backend (Node.js + `/shared` SSOT)
+## 5. Padrões de Backend (Hono + Cloudflare Workers + `/shared` SSOT)
 
 * **Arquitetura em Camadas (Layered Architecture):**
-  * **Routes:** Acoplam Middlewares de Autenticação e Validação Zod aos Controllers. Zero regra de negócio.
-  * **Controllers:** Orquestram `req`/`res`, extraem dados validados, invocam o Service e retornam o DTO no envelope padrão.
-  * **Services:** Concentram 100% da regra de negócio e validações de domínio. Não conhecem objetos HTTP (`req`/`res`).
+  * **Routes:** Instâncias modulares de `Hono` que acoplam Middlewares de Autenticação e Validação Zod aos Controllers. Zero regra de negócio.
+  * **Controllers:** Orquestram o `Context` (`c`) do Hono, extraem dados validados (`validBody`, `validQuery`, `validParams`), invocam o Service e retornam o DTO no envelope padrão via `c.json(...)`.
+  * **Services:** Concentram 100% da regra de negócio e validações de domínio. Não conhecem objetos HTTP (`Context` do Hono, `Request`/`Response`).
   * **Repositories:** Única camada autorizada a realizar chamadas ao Supabase (`tables`, `rpc`, `storage`).
-* **Validação Universal e Variáveis de Ambiente:**
-  * Todo `body`, `query` e `params` deve ser validado via middleware Zod antes de chegar ao Controller.
-  * O arquivo `.env` deve ser validado no boot da aplicação via Zod (`env.ts`), interrompendo a inicialização caso falte qualquer variável obrigatória.
+* **Validação Universal e Variáveis de Ambiente (Cloudflare Bindings):**
+  * Todo `body`, `query` e `params` deve ser validado via middleware Zod tipado (zero `any`) antes de chegar ao Controller.
+  * As variáveis de ambiente e bindings do Worker (`.dev.vars` em desenvolvimento local via Wrangler e Secrets/Vars no Cloudflare em produção) devem ser validadas via Zod (`validateEnv(c.env)` em `env.ts`), falhando rapidamente caso falte qualquer variável obrigatória (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CORS_ORIGIN`).
 * **Estrutura da Pasta `/shared` (SSOT):**
   * `/shared/schemas/`: Schemas Zod de validação de payloads e parâmetros.
   * `/shared/types/database.types.ts`: Tipos gerados automaticamente do Supabase.
@@ -163,7 +163,7 @@ Nenhuma entidade pode ter apenas criação e listagem. É obrigatório implement
   3. **Espera Obrigatória:** Perguntar *"Posso prosseguir com esses comandos?"* e aguardar o "sim" explícito do usuário.
 * **Checklist Antes do Código no Backend (As 4 Perguntas de Ouro):** Antes de implementar qualquer nova rota, verificar se estão claros: 1) Autorização/Escopo do usuário, 2) Validação e limites de tamanho no Zod, 3) Filtros/Paginação, 4) Efeitos colaterais transacionais. Se houver ambiguidade, parar e perguntar antes de codar.
 * **Verificação Obrigatória de Compilação (`TSC`) e Build de Produção:**
-  * Toda IA executora DEVE rodar `npx tsc --noEmit` e `npm run build` na sua respectiva pasta antes de entregar a tarefa.
+  * Toda IA executora DEVE rodar `npx tsc --noEmit` (`npm run typecheck`) e `npm run build` (no backend: build/empacotamento Wrangler compatível com Cloudflare Workers, ex.: `wrangler deploy --dry-run`) na sua respectiva pasta antes de entregar a tarefa.
   * Caso `tsc` gere acidentalmente arquivos `.js` ou `.d.ts` sujos dentro de pastas `src/`, a IA deve limpá-los imediatamente antes de finalizar.
 
 ### Diretrizes Estritas da IA Instrutora / Arquiteta (Antigravity)
