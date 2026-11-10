@@ -91,3 +91,20 @@ Seguindo o DNA visual da família Prumo:
    - É **terminantemente proibido** usar `window.alert`, `window.confirm` ou `window.prompt`. Toda criação complexa, edição ou confirmação de exclusão deve usar `Dialog` / `AlertDialog` do `shadcn/ui`, e todo feedback de ação deve usar `Toast` (`Sonner`).
 3. **Estados de Carregamento (`Skeleton`):**
    - É proibido exibir textos puros como `"Carregando..."`. Toda busca assíncrona deve renderizar componentes `Skeleton` nas dimensões exatas da listagem para evitar *Layout Shift*.
+
+---
+
+## 7. Responsividade Obrigatória (Mobile-First em Tudo)
+
+Toda página, componente, listagem em 2 níveis, barra de filtros e modal deve funcionar perfeitamente de **`360px` (mobile)** até telas **desktop widescreen**, com **zero rolagem horizontal** indesejada:
+
+1. **Prevenção de Esmagamento e Estouro em Flex/Grid (`min-w-0` e `shrink-0`):**
+   - Todo container filho de `flex` ou `grid` que contenha textos dinâmicos, e-mails, UUIDs, URLs ou chips de temas **deve** receber `min-w-0` para respeitar os limites do card.
+   - Rótulos curtos (`User ID`, datas, status, contadores) e grupos compactos de metadados devem usar `shrink-0 whitespace-nowrap` (para nunca quebrarem feio em duas linhas no mobile) — ou o par rótulo/valor deve empilhar em coluna no mobile (`flex-col sm:flex-row sm:items-center sm:justify-between`) quando o valor for longo.
+   - Strings longas devem usar `truncate` (em linha única) ou `break-words` / `break-all` (em URLs externas e blocos dentro de gavetas).
+2. **Cabeçalhos, Toolbars e Ações Adaptáveis:**
+   - Cabeçalhos de página e barras de busca/filtro devem empilhar limpo no mobile (`flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`), com inputs e selects ocupando largura total (`w-full sm:w-auto`) em telas pequenas.
+   - No **1º nível das listagens**, em telas estreitas, botões de ação rápida e tags devem quebrar com `flex-wrap gap-2` em área clicável confortável, sem comprimir o título do item.
+3. **Gavetas (2º Nível), Split Views e Modais (`Dialog`):**
+   - Grades lado a lado em gavetas (como *Reflexões Próprias* e *Conexões com Outros Temas*) ou no ambiente de execução de simulado (PDF + Pensamentos) devem virar **coluna única empilhada (ou alternância em abas)** no mobile (`grid-cols-1 lg:grid-cols-2`).
+   - Todo `Dialog` e `AlertDialog` deve limitar largura com folga nas laterais (`w-[calc(100vw-2rem)]`) e permitir rolagem interna (`max-h-[90vh] overflow-y-auto`) para formulários nunca cortarem os botões em telas menores.
