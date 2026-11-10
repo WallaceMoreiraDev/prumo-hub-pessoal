@@ -36,16 +36,36 @@ function resolveForeignKeyNotFoundCode(
   combinedText: string,
   fallbackNotFoundCode: ErrorCode
 ): ErrorCode {
-  if (combinedText.includes('simulado_questao')) {
+  if (
+    combinedText.includes('table "temas"') ||
+    combinedText.includes('_tema_id_fkey') ||
+    combinedText.includes('_tema_conectado_id_fkey') ||
+    combinedText.includes('_tema_principal_id_fkey')
+  ) {
+    return ERROR_CODES.TEMA_NOT_FOUND;
+  }
+  if (
+    combinedText.includes('table "simulado_questoes"') ||
+    combinedText.includes('simulado_questao')
+  ) {
     return ERROR_CODES.SIMULADO_QUESTAO_NOT_FOUND;
   }
-  if (combinedText.includes('simulado')) {
+  if (
+    combinedText.includes('table "simulados"') ||
+    combinedText.includes('simulado')
+  ) {
     return ERROR_CODES.SIMULADO_NOT_FOUND;
   }
-  if (combinedText.includes('caderno_erro')) {
+  if (
+    combinedText.includes('table "caderno_erros"') ||
+    combinedText.includes('caderno_erro')
+  ) {
     return ERROR_CODES.CADERNO_ERRO_NOT_FOUND;
   }
-  if (combinedText.includes('reflexao')) {
+  if (
+    combinedText.includes('table "reflexoes"') ||
+    combinedText.includes('reflexao')
+  ) {
     return ERROR_CODES.REFLEXAO_NOT_FOUND;
   }
   if (combinedText.includes('tema')) {
@@ -97,12 +117,41 @@ export function mapSupabaseError(
       return new AppError(ERROR_CODES.CONFLICT, 409);
     }
 
+    case '23502': {
+      return new AppError(ERROR_CODES.VALIDATION_ERROR, 400);
+    }
+
     case '23514': {
       if (
         combined.includes('temas_nome_sem_hashtag') ||
         combined.includes('temas_nome_not_blank')
       ) {
         return new AppError(ERROR_CODES.TEMA_INVALID_NAME, 400);
+      }
+      if (combined.includes('caderno_erros_titulo_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'titulo',
+            message: 'O título da questão não pode estar vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('caderno_erros_origem_payload_check')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'origem',
+            message:
+              'Os campos informados são incompatíveis com a origem do erro.',
+          },
+        ]);
+      }
+      if (combined.includes('caderno_erros_review_consistency')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'reviewMode',
+            message: 'Inconsistência nos dados de revisão do registro.',
+          },
+        ]);
       }
       return new AppError(ERROR_CODES.VALIDATION_ERROR, 400);
     }

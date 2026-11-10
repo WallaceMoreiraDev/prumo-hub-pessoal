@@ -8,7 +8,7 @@ Este documento registra as entregas da **Backend AI** (rotas, contratos em `/sha
 
 - [x] **Setup Inicial & Contratos Base (`/shared`)**
 - [ ] **Módulo 1: Simulados (Preparação, Execução, Pós-Prova e Exportação IA)**
-- [ ] **Módulo 2: Caderno de Erros (Listagem, Cadastro Manual Restrito e Revisão)**
+- [x] **Módulo 2: Caderno de Erros (Listagem, Cadastro Manual Restrito e Revisão)**
 - [x] **Módulo 3: Temas, Revisão e Conexões Bidirecionais** *(entregue primeiro conforme ordem acordada para o backend)*
 
 ---
@@ -144,13 +144,13 @@ Todos os contratos são importáveis de `@shared` (ou caminhos específicos em `
 - [`auth.types.ts`](./shared/types/auth.types.ts): `AuthUserDto`, `HealthCheckDto` (`status`, `timestamp`, `runtime: 'cloudflare-workers'`).
 - [`temas.types.ts`](./shared/types/temas.types.ts): `TemaSortBy`, `TEMA_SORT_OPTIONS`, `TemaSummaryDto`, `TemaDto`, `TemaListItemDto`, `ReflexaoDto`, `TemaDetalheDto`.
 - [`simulados.types.ts`](./shared/types/simulados.types.ts): `SimuladoPensamentoDto`, `SimuladoQuestaoDto`, `SimuladoDto`, `SimuladoDetalheDto`, `SimuladoPdfSignedUrlDto`, `SimuladoExportIaDto`.
-- [`caderno-erros.types.ts`](./shared/types/caderno-erros.types.ts): `CadernoErroSimuladoMetaDto`, `CadernoErroDto`.
+- [`caderno-erros.types.ts`](./shared/types/caderno-erros.types.ts): `CADERNO_ERRO_SORT_OPTIONS`, `CadernoErroSortBy`, `CadernoErroSimuladoMetaDto`, `CadernoErroDto`.
 
 #### Schemas Zod (`/shared/schemas/`)
 - [`common.schema.ts`](./shared/schemas/common.schema.ts): `UuidSchema`, `UuidParamSchema`, `PaginationQuerySchema` (`page` `1..10000`, `limit` `1..100`, `search` max `120`), `HttpUrlSchema` (`trim()` antes de validar URL `http`/`https`, max `2048`).
 - [`temas.schema.ts`](./shared/schemas/temas.schema.ts): `TemaNomeSchema` (trim, não vazio, max `80`, proibido `#`), `CreateTemaSchema`, `UpdateTemaSchema`, `TemasQuerySchema` (`page`, `limit`, `search`, `sortBy`, `reviewMode`), `RegistrarPraticaSchema`, `CreateReflexaoSchema` (impede `temaPrincipalId` em `temaConectadoIds`), `UpdateReflexaoSchema`.
 - [`simulados.schema.ts`](./shared/schemas/simulados.schema.ts): `CreateSimuladoSchema` (`duracaoConfiguradaSegundos` inteiro `1..86400`), `UpdateSimuladoSchema`, `SimuladosQuerySchema`, `CreateSimuladoQuestaoSchema`, `UpdateSimuladoQuestaoSchema`, `CreateSimuladoPensamentoSchema`, `UpdateSimuladoPensamentoSchema`, `FinalizarSimuladoSchema`, `ClassificarQuestaoSimuladoSchema` (`temaIds` padrão `[]`, rejeita `observacaoPosRevisao` preenchida quando `resultado === 'ACERTEI'` e normaliza para `null`).
-- [`caderno-erros.schema.ts`](./shared/schemas/caderno-erros.schema.ts): `CreateManualErrorSchema` (`z.discriminatedUnion('origem', ...)` aceitando **exclusivamente** `EXTERNAL_LINK` — normalizando `titulo: ""` para `undefined` — e `GENERIC_FULL`), `UpdateCadernoErroSchema`, `CadernoErrosQuerySchema`, `RevisarCadernoErroSchema`.
+- [`caderno-erros.schema.ts`](./shared/schemas/caderno-erros.schema.ts): `CreateManualErrorSchema` (`z.discriminatedUnion('origem', ...)` aceitando **exclusivamente** `EXTERNAL_LINK` — normalizando `titulo: ""` para `undefined` — e `GENERIC_FULL`), `UpdateCadernoErroSchema`, `CadernoErrosQuerySchema` (`page`, `limit`, `search`, `status`, `temaId`, `origem`, `sortBy`), `RevisarCadernoErroSchema`.
 
 ---
 
@@ -379,3 +379,169 @@ Exclui uma reflexão/conexão (removendo por cascata os vínculos em `reflexao_t
 - **Params:** `id` (`UUID`)
 - **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
 - **Erros:** `404 REFLEXAO_NOT_FOUND`.
+
+---
+
+## Módulo 2: Caderno de Erros (Listagem, Cadastro Manual Restrito e Revisão)
+
+Todas as rotas abaixo exigem autenticação via `Authorization: Bearer <token>` (isolamento multi-usuário estrito por RLS).
+
+### 1. Regras de Negócio & Dicas de UI
+
+- **Restrição de Origem no Cadastro Manual (`GEMINI.md` 3.3):** O formulário de cadastro manual aceita **exclusivamente** `'EXTERNAL_LINK'` (questão externa com `codigoReferencia` + `linkExterno`) e `'GENERIC_FULL'` (questão avulsa com `titulo` + `enunciadoCompleto`). A origem `'SIMULADO'` é gerada apenas automaticamente pelo fluxo pós-simulado e **nunca** pode ser enviada no cadastro manual (`CreateManualErrorSchema` / `INVALID_MANUAL_ERROR_ORIGIN`).
+- **Acoplamento com Última Revisão dos Temas (`GEMINI.md` 3.1):**
+  - Cadastrar um erro (`POST /caderno-erros`), editar (`PATCH /caderno-erros/:id`), devolver para pendentes (`POST /caderno-erros/:id/devolver`) ou excluir (`DELETE /caderno-erros/:id`) **JAMAIS** atualiza `lastReviewedAt` ou `lastReviewMode` dos temas vinculados.
+  - Somente **`POST /api/v1/caderno-erros/:id/revisar`** (`SOLO` ou `HELP`) atualiza atomicamente o status do erro para `'REVISADO'` e atualiza `lastReviewedAt` + `lastReviewMode` em todos os temas vinculados.
+- **Destaque `Com Ajuda` (`HELP`) e Abas (`STYLEGUIDE.md`):**
+  - Itens com `status === 'PENDENTE'` vão para a aba *Pendentes*; itens com `status === 'REVISADO'` vão para a aba *Já Revisados*.
+  - Na aba *Já Revisados*, itens com `lastReviewMode === 'HELP'` devem receber apenas o destaque mínimo (`border-l-2 border-l-amber-500/80`) e podem ser remarcados como `SOLO` (`POST /revisar`) ou devolvidos (`POST /devolver`).
+- **Invalidação Obrigatória no TanStack Query:**
+  - Toda mutação em `/caderno-erros` (`POST`, `PATCH`, `DELETE`, `POST /revisar`, `POST /devolver`) **deve invalidar** `['caderno-erros']` **e** `['temas']` (lista e detalhes dos temas afetados), pois alterações afetam `lastReviewedAt`/`lastReviewMode` (via `revisar`) e os contadores `totalErrosPendentes` / `totalErrosRevisados` exibidos na gaveta dos temas.
+
+---
+
+### 2. Endpoints (`/api/v1/caderno-erros`)
+
+#### `GET /api/v1/caderno-erros`
+Lista paginada de registros do Caderno de Erros para o **1º e 2º níveis** (linha fechada + gaveta expansível).
+
+- **Query Params (`CadernoErrosQuerySchema`):**
+  - `page` *(number, default `1`, `1..10000`)*
+  - `limit` *(number, default `20`, `1..100`)*
+  - `status` *(`'PENDENTE' | 'REVISADO'`, opcional)*
+  - `temaId` *(UUID, opcional)* — filtra registros vinculados ao tema **preservando todos os demais temas** no array `temas` de cada `CadernoErroDto`.
+  - `origem` *(`'SIMULADO' | 'EXTERNAL_LINK' | 'GENERIC_FULL'`, opcional)*
+  - `search` *(string, opcional, max `120`)* — busca case-insensitive (`ILIKE`) em `titulo`, `codigoReferencia`, `enunciadoCompleto` e `observacaoErro` (com sanitização segura para sintaxe `.or()` do PostgREST).
+  - `sortBy` *(`'recent' | 'oldest'`, default `'recent'`)* — ordenação por `createdAt DESC, id ASC` (`'recent'`) ou `createdAt ASC, id ASC` (`'oldest'`).
+- **Resposta `200` (`ApiSuccessResponse<CadernoErroDto[]>` com `meta.pagination`):**
+  - `temas`: lista deduplicada de `TemaSummaryDto` ordenada alfabeticamente por `nome` (`pt-BR`).
+  - `simuladoMeta`: `null` para erros manuais (`EXTERNAL_LINK` / `GENERIC_FULL`), ou objeto hidratado quando `origem === 'SIMULADO'`.
+
+**Exemplo de `CadernoErroDto` — Origem `SIMULADO`:**
+```json
+{
+  "id": "880e8400-e29b-41d4-a716-446655440010",
+  "userId": "550e8400-e29b-41d4-a716-446655440000",
+  "origem": "SIMULADO",
+  "status": "PENDENTE",
+  "simuladoQuestaoId": "990e8400-e29b-41d4-a716-446655440020",
+  "codigoReferencia": null,
+  "titulo": "Caminho Mínimo com Pedágios",
+  "enunciadoCompleto": null,
+  "linkExterno": null,
+  "observacaoErro": "Esqueci de modelar os estados por (vertice, cupons_usados).",
+  "lastReviewedAt": null,
+  "lastReviewMode": null,
+  "temas": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "nome": "Dijkstra",
+      "lastReviewedAt": "2026-11-08T14:20:00.000Z",
+      "lastReviewMode": "SOLO"
+    }
+  ],
+  "simuladoMeta": {
+    "simuladoId": "660e8400-e29b-41d4-a716-446655440030",
+    "simuladoTitulo": "OBI 2024 Fase 2",
+    "simuladoQuestaoId": "990e8400-e29b-41d4-a716-446655440020",
+    "numeroQuestao": "Q2",
+    "tituloQuestao": "Caminho Mínimo com Pedágios",
+    "resultado": "PARCIAL",
+    "pensamentos": [
+      {
+        "id": "770e8400-e29b-41d4-a716-446655440040",
+        "userId": "550e8400-e29b-41d4-a716-446655440000",
+        "simuladoQuestaoId": "990e8400-e29b-41d4-a716-446655440020",
+        "descricao": "Tentei Dijkstra simples, mas o desconto muda a subestrutura ótima.",
+        "tempoDecorridoSegundos": 1840,
+        "createdAt": "2026-11-08T13:30:40.000Z",
+        "updatedAt": "2026-11-08T13:30:40.000Z"
+      }
+    ]
+  },
+  "createdAt": "2026-11-08T14:20:00.000Z",
+  "updatedAt": "2026-11-08T14:20:00.000Z"
+}
+```
+*(Em `simuladoMeta.pensamentos`, os pensamentos vêm em ordem cronológica: `createdAt ASC`, desempate `tempoDecorridoSegundos ASC NULLS LAST`, `id ASC`).*
+
+#### `GET /api/v1/caderno-erros/:id`
+Retorna os detalhes hidratados de um registro do Caderno de Erros.
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `ApiSuccessResponse<CadernoErroDto>`
+- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`.
+
+#### `POST /api/v1/caderno-erros`
+Cadastra manualmente uma questão externa (`EXTERNAL_LINK`) ou questão genérica completa (`GENERIC_FULL`). Nasce sempre com `status: 'PENDENTE'`, `lastReviewedAt: null`, `lastReviewMode: null`, sem alterar a última revisão dos temas vinculados.
+
+- **Body (`CreateManualErrorSchema` — discriminado por `origem`):**
+  - **Opção 1 — `EXTERNAL_LINK`:**
+    ```json
+    {
+      "origem": "EXTERNAL_LINK",
+      "codigoReferencia": "CF 1900C",
+      "linkExterno": "https://codeforces.com/problemset/problem/1900/C",
+      "titulo": "Anji's Binary Tree",
+      "temaIds": ["550e8400-e29b-41d4-a716-446655440001"],
+      "observacaoErro": "Confundi caso base em folhas sem filhos."
+    }
+    ```
+    *(O campo `titulo` é opcional; quando omitido ou `""`, o backend preenche automaticamente com `codigoReferencia`).*
+  - **Opção 2 — `GENERIC_FULL`:**
+    ```json
+    {
+      "origem": "GENERIC_FULL",
+      "titulo": "Questão de Eletrodinâmica - Ponte de Wheatstone",
+      "enunciadoCompleto": "Determine a resistência equivalente entre A e B sabendo que a ponte está em equilíbrio...",
+      "linkExterno": "",
+      "temaIds": ["550e8400-e29b-41d4-a716-446655440001"],
+      "observacaoErro": "Esqueci que não passa corrente pelo resistor central."
+    }
+    ```
+    *(Para `GENERIC_FULL`, `linkExterno` é opcional e `""` é normalizado para `null`).*
+- **Resposta `201`:** `ApiSuccessResponse<CadernoErroDto>` (`simuladoMeta: null`)
+- **Erros:** `400 VALIDATION_ERROR`, `400 INVALID_MANUAL_ERROR_ORIGIN` (no domínio caso `origem === 'SIMULADO'`), `404 TEMA_NOT_FOUND`.
+
+#### `PATCH /api/v1/caderno-erros/:id`
+Atualiza um registro do Caderno de Erros respeitando restrições estritas por `origem`:
+
+- **Params:** `id` (`UUID`)
+- **Body (`UpdateCadernoErroSchema` — ao menos 1 campo):** `codigoReferencia`, `titulo`, `enunciadoCompleto`, `linkExterno`, `observacaoErro`, `temaIds`.
+- **Regras por Origem do Registro:**
+  - **`SIMULADO`:** aceita **apenas** `observacaoErro` e `temaIds` (`>= 1` tema). Tentativa de enviar `codigoReferencia`, `titulo`, `enunciadoCompleto` ou `linkExterno` retorna `400 VALIDATION_ERROR` com `details` indicando os campos bloqueados.
+  - **`EXTERNAL_LINK`:** aceita `codigoReferencia`, `linkExterno`, `titulo` (mantém atual se omitido; não pode ficar vazio), `observacaoErro` e `temaIds`. Rejeita `enunciadoCompleto` não nulo e garante estado resultante válido (`codigoReferencia` e `linkExterno` presentes) via `400 VALIDATION_ERROR`.
+  - **`GENERIC_FULL`:** aceita `titulo`, `enunciadoCompleto`, `linkExterno`, `observacaoErro` e `temaIds`. Garante que `titulo` e `enunciadoCompleto` permaneçam não vazios e rejeita `codigoReferencia` não nulo via `400 VALIDATION_ERROR`.
+- **Sincronização:** `temaIds` é pré-validado (`404 TEMA_NOT_FOUND`) e sincronizado por diff seguro em `caderno_erro_temas` com rollback compensatório.
+- **Resposta `200`:** `ApiSuccessResponse<CadernoErroDto>`
+- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`, `404 TEMA_NOT_FOUND`, `400 VALIDATION_ERROR`.
+
+#### `POST /api/v1/caderno-erros/:id/revisar`
+Conclui a revisão de um erro (ou atualiza o modo de revisão de um item já revisado, ex.: `HELP` → `SOLO`) invocando a RPC atômica **`rpc_concluir_revisao_erro`**. Atualiza o erro para `status: 'REVISADO'` e atualiza `lastReviewedAt` + `lastReviewMode` em **todos os temas vinculados**.
+
+- **Params:** `id` (`UUID`)
+- **Body (`RevisarCadernoErroSchema`):**
+  ```json
+  {
+    "reviewMode": "SOLO"
+  }
+  ```
+  - `SOLO`: botão **Finalizado Sozinho**
+  - `HELP`: botão **Com Ajuda**
+- **Resposta `200`:** `ApiSuccessResponse<CadernoErroDto>`
+- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`, `400 VALIDATION_ERROR`.
+
+#### `POST /api/v1/caderno-erros/:id/devolver`
+Devolve um erro revisado para a aba de pendentes invocando a RPC atômica **`rpc_devolver_erro_para_pendente`** (`status = 'PENDENTE'`), preservando os metadados históricos (`lastReviewedAt` e `lastReviewMode`).
+
+- **Params:** `id` (`UUID`)
+- **Body:** nenhum
+- **Resposta `200`:** `ApiSuccessResponse<CadernoErroDto>`
+- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`.
+
+#### `DELETE /api/v1/caderno-erros/:id`
+Exclui um registro do Caderno de Erros (e seus vínculos em `caderno_erro_temas` por cascata).
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
+- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`.
