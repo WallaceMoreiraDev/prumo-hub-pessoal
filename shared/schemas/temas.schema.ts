@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { REVIEW_MODES } from '../types/enums.types';
+import { TEMA_SORT_OPTIONS } from '../types/temas.types';
 import { PaginationQuerySchema, UuidSchema } from './common.schema';
 
 export const TemaNomeSchema = z
@@ -19,7 +20,19 @@ export const UpdateTemaSchema = z.object({
   nome: TemaNomeSchema,
 });
 
-export const TemasQuerySchema = PaginationQuerySchema;
+export const TemasQuerySchema = PaginationQuerySchema.extend({
+  sortBy: z
+    .enum(TEMA_SORT_OPTIONS, {
+      error:
+        'Ordenação inválida. Utilize oldest_review, recent_review ou name_asc.',
+    })
+    .default('oldest_review'),
+  reviewMode: z
+    .enum(REVIEW_MODES, {
+      error: 'Modo de revisão inválido. Utilize SOLO ou HELP.',
+    })
+    .optional(),
+});
 
 export const RegistrarPraticaSchema = z.object({
   temaIds: z
@@ -88,6 +101,7 @@ export const UpdateReflexaoSchema = z
 
 export type CreateTemaInput = z.infer<typeof CreateTemaSchema>;
 export type UpdateTemaInput = z.infer<typeof UpdateTemaSchema>;
+export type TemasQueryInput = z.input<typeof TemasQuerySchema>;
 export type TemasQuery = z.infer<typeof TemasQuerySchema>;
 export type RegistrarPraticaInput = z.infer<typeof RegistrarPraticaSchema>;
 export type CreateReflexaoFormInput = z.input<typeof CreateReflexaoSchema>;

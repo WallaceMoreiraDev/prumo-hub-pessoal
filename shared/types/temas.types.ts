@@ -1,5 +1,13 @@
 import type { ReviewMode } from './enums.types';
 
+export type TemaSortBy = 'oldest_review' | 'recent_review' | 'name_asc';
+
+export const TEMA_SORT_OPTIONS = [
+  'oldest_review',
+  'recent_review',
+  'name_asc',
+] as const satisfies readonly TemaSortBy[];
+
 export interface TemaSummaryDto {
   id: string;
   nome: string;
@@ -15,6 +23,12 @@ export interface TemaDto {
   lastReviewMode: ReviewMode | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TemaListItemDto extends TemaDto {
+  totalReflexoes: number;
+  totalConexoes: number;
+  temasConectadosResumo: TemaSummaryDto[];
 }
 
 export interface ReflexaoDto {
