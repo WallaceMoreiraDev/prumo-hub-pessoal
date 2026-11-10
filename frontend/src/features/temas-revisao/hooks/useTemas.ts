@@ -29,6 +29,8 @@ export const temasKeys = {
   detail: (id: string) => [...temasKeys.details(), id] as const,
 };
 
+const CADERNO_ERROS_QUERY_KEY = ['caderno-erros'] as const;
+
 export function useTemasListQuery(filters: TemasListQueryParams) {
   return useQuery({
     queryKey: temasKeys.list(filters),
@@ -86,7 +88,10 @@ export function useUpdateTemaMutation() {
     mutationFn: ({ id, input }: { id: string; input: UpdateTemaInput }) =>
       temasApi.updateTema(id, input),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: temasKeys.all });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: temasKeys.all }),
+        queryClient.invalidateQueries({ queryKey: CADERNO_ERROS_QUERY_KEY }),
+      ]);
       toast.success('Tema atualizado com sucesso.');
     },
     onError: (error) => {
@@ -101,7 +106,10 @@ export function useDeleteTemaMutation() {
   return useMutation({
     mutationFn: (id: string) => temasApi.deleteTema(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: temasKeys.all });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: temasKeys.all }),
+        queryClient.invalidateQueries({ queryKey: CADERNO_ERROS_QUERY_KEY }),
+      ]);
       toast.success('Tema excluído com sucesso.');
     },
     onError: (error) => {
@@ -117,7 +125,10 @@ export function useRegistrarPraticaMutation() {
     mutationFn: (input: RegistrarPraticaInput) =>
       temasApi.registrarPratica(input),
     onSuccess: async (updatedTemas) => {
-      await queryClient.invalidateQueries({ queryKey: temasKeys.all });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: temasKeys.all }),
+        queryClient.invalidateQueries({ queryKey: CADERNO_ERROS_QUERY_KEY }),
+      ]);
       const label =
         updatedTemas.length === 1
           ? 'Prática registrada para 1 tema.'
