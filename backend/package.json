@@ -1,0 +1,24 @@
+{
+  "name": "@prumo/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API BFF em Hono + Cloudflare Workers para o Prumo Hub Pessoal",
+  "scripts": {
+    "dev": "wrangler dev --port 3001",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "db:types": "cd .. && supabase gen types typescript --linked > shared/types/database.types.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "hono": "^4.13.17",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261109.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.159.0"
+  }
+}

@@ -1,0 +1,5 @@
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+CORS_ORIGIN=http://localhost:5173
+ENVIRONMENT=development
+LOG_LEVEL=debug

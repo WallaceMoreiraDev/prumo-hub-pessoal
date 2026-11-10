@@ -1,0 +1,9 @@
+name = "prumo-hub-pessoal-backend"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+# Variáveis não-sensíveis de ambiente (use `.dev.vars` localmente e `wrangler secret put` em produção)
+# [vars]
+# ENVIRONMENT = "production"
+# LOG_LEVEL = "info"
+# CORS_ORIGIN = "https://app.prumo.exemplo.com"
