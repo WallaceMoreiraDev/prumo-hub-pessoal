@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CADERNO_ERRO_SORT_OPTIONS } from '../types/caderno-erros.types';
 import { ERRO_ORIGENS, ERRO_STATUSES, REVIEW_MODES } from '../types/enums.types';
 import { HttpUrlSchema, PaginationQuerySchema, UuidSchema } from './common.schema';
 
@@ -122,6 +123,11 @@ export const CadernoErrosQuerySchema = PaginationQuerySchema.extend({
   status: z.enum(ERRO_STATUSES).optional(),
   temaId: UuidSchema.optional(),
   origem: z.enum(ERRO_ORIGENS).optional(),
+  sortBy: z
+    .enum(CADERNO_ERRO_SORT_OPTIONS, {
+      error: 'Ordenação inválida. Utilize recent ou oldest.',
+    })
+    .default('recent'),
 });
 
 export const RevisarCadernoErroSchema = z.object({
@@ -134,5 +140,6 @@ export type CreateManualErrorFormInput = z.input<typeof CreateManualErrorSchema>
 export type CreateManualErrorInput = z.infer<typeof CreateManualErrorSchema>;
 export type UpdateCadernoErroFormInput = z.input<typeof UpdateCadernoErroSchema>;
 export type UpdateCadernoErroInput = z.infer<typeof UpdateCadernoErroSchema>;
+export type CadernoErrosQueryInput = z.input<typeof CadernoErrosQuerySchema>;
 export type CadernoErrosQuery = z.infer<typeof CadernoErrosQuerySchema>;
 export type RevisarCadernoErroInput = z.infer<typeof RevisarCadernoErroSchema>;

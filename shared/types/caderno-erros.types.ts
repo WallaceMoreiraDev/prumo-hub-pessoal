@@ -7,6 +7,10 @@ import type {
 import type { SimuladoPensamentoDto } from './simulados.types';
 import type { TemaSummaryDto } from './temas.types';
 
+export const CADERNO_ERRO_SORT_OPTIONS = ['recent', 'oldest'] as const;
+
+export type CadernoErroSortBy = (typeof CADERNO_ERRO_SORT_OPTIONS)[number];
+
 export interface CadernoErroSimuladoMetaDto {
   simuladoId: string;
   simuladoTitulo: string;
