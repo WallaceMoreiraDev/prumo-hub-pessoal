@@ -1,3 +1,4 @@
+import type { Context } from 'hono';
 import type { AuthUserDto } from '@shared/types/auth.types';
 import type { ValidatedEnv } from '../config/env';
 import type { EdgeLogger } from '../config/logger';
@@ -26,3 +27,12 @@ export type AppEnv = {
   Bindings: AppBindings;
   Variables: AppVariables;
 };
+
+export type ValidatedContext<
+  TOverrides extends Partial<
+    Pick<AppVariables, 'validBody' | 'validQuery' | 'validParams'>
+  >,
+> = Context<{
+  Bindings: AppBindings;
+  Variables: AppVariables & TOverrides;
+}>;
