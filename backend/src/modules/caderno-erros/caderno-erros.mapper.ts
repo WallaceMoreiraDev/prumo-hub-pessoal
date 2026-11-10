@@ -6,6 +6,11 @@ import type { Tables } from '@shared/types/database.types';
 import type { SimuladoPensamentoDto } from '@shared/types/simulados.types';
 import type { TemaSummaryDto } from '@shared/types/temas.types';
 import {
+  comparePensamentosCronologico,
+  mapSimuladoPensamentoDto,
+  type SimuladoPensamentoRow,
+} from '../simulados/simulados.mapper';
+import {
   compareTemaByNome,
   mapTemaSummaryDto,
   type TemaSummaryRow,
@@ -15,7 +20,7 @@ import {
 export type CadernoErroRow = Tables<'caderno_erros'>;
 export type SimuladoQuestaoRow = Tables<'simulado_questoes'>;
 export type SimuladoRow = Tables<'simulados'>;
-export type SimuladoPensamentoRow = Tables<'simulado_pensamentos'>;
+export type { SimuladoPensamentoRow };
 
 export interface CadernoErroTemaJoinRow {
   tema: TemaSummaryRow | TemaSummaryRow[] | null;
@@ -23,16 +28,7 @@ export interface CadernoErroTemaJoinRow {
 
 export type SimuladoSummaryJoinRow = Pick<SimuladoRow, 'id' | 'titulo'>;
 
-export type SimuladoPensamentoJoinRow = Pick<
-  SimuladoPensamentoRow,
-  | 'id'
-  | 'user_id'
-  | 'simulado_questao_id'
-  | 'descricao'
-  | 'tempo_decorrido_segundos'
-  | 'created_at'
-  | 'updated_at'
->;
+export type SimuladoPensamentoJoinRow = SimuladoPensamentoRow;
 
 export interface SimuladoQuestaoMetaJoinRow
   extends Pick<
@@ -51,47 +47,7 @@ export interface CadernoErroWithRelationsRow extends CadernoErroRow {
     | null;
 }
 
-export function mapSimuladoPensamentoDto(
-  row: SimuladoPensamentoJoinRow
-): SimuladoPensamentoDto {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    simuladoQuestaoId: row.simulado_questao_id,
-    descricao: row.descricao,
-    tempoDecorridoSegundos: row.tempo_decorrido_segundos,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function comparePensamentosCronologico(
-  a: SimuladoPensamentoDto,
-  b: SimuladoPensamentoDto
-): number {
-  const timeA = Date.parse(a.createdAt);
-  const timeB = Date.parse(b.createdAt);
-
-  if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
-    return timeA - timeB;
-  }
-
-  if (a.createdAt !== b.createdAt) {
-    return a.createdAt < b.createdAt ? -1 : 1;
-  }
-
-  if (a.tempoDecorridoSegundos !== b.tempoDecorridoSegundos) {
-    if (a.tempoDecorridoSegundos === null) {
-      return 1;
-    }
-    if (b.tempoDecorridoSegundos === null) {
-      return -1;
-    }
-    return a.tempoDecorridoSegundos - b.tempoDecorridoSegundos;
-  }
-
-  return a.id.localeCompare(b.id);
-}
+export { mapSimuladoPensamentoDto };
 
 function mapCadernoErroSimuladoMeta(
   row: CadernoErroWithRelationsRow

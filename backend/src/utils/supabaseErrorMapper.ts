@@ -153,6 +153,88 @@ export function mapSupabaseError(
           },
         ]);
       }
+      if (combined.includes('simulados_titulo_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'titulo',
+            message: 'O título do simulado não pode estar vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('simulados_duracao_positive')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'duracaoConfiguradaSegundos',
+            message: 'A duração do simulado deve ser maior que zero.',
+          },
+        ]);
+      }
+      if (combined.includes('simulados_tempo_gasto_non_negative')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'tempoGastoSegundos',
+            message: 'O tempo gasto não pode ser negativo.',
+          },
+        ]);
+      }
+      if (combined.includes('simulados_timestamps_order')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'finishedAt',
+            message:
+              'A data de finalização não pode ser anterior ao início do simulado.',
+          },
+        ]);
+      }
+      if (combined.includes('simulado_questoes_numero_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'numeroQuestao',
+            message: 'O número/código da questão não pode estar vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('simulado_questoes_titulo_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'tituloQuestao',
+            message: 'O título da questão não pode estar vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('simulado_questoes_ordem_non_negative')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'ordem',
+            message: 'A ordem da questão não pode ser negativa.',
+          },
+        ]);
+      }
+      if (combined.includes('simulado_questoes_acertei_sem_observacao')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'observacaoPosRevisao',
+            message:
+              'A observação de pós-revisão não é permitida quando o resultado é ACERTEI.',
+          },
+        ]);
+      }
+      if (combined.includes('simulado_pensamentos_descricao_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'descricao',
+            message: 'A descrição do pensamento não pode estar vazia.',
+          },
+        ]);
+      }
+      if (combined.includes('simulado_pensamentos_tempo_non_negative')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'tempoDecorridoSegundos',
+            message: 'O tempo decorrido não pode ser negativo.',
+          },
+        ]);
+      }
       return new AppError(ERROR_CODES.VALIDATION_ERROR, 400);
     }
 
@@ -187,4 +269,87 @@ export function throwIfSupabaseError(
   if (error !== null) {
     throw mapSupabaseError(error, fallbackNotFoundCode);
   }
+}
+
+export interface SupabaseStorageErrorLike {
+  message?: string;
+  status?: number | undefined;
+  statusCode?: string | undefined;
+  code?: string | undefined;
+}
+
+export function isStorageNotFoundError(error: SupabaseStorageErrorLike): boolean {
+  const status = error.status;
+  const statusCode = (error.statusCode ?? '').trim();
+  const code = (error.code ?? '').trim().toLowerCase();
+  const message = (error.message ?? '').toLowerCase();
+
+  return (
+    status === 404 ||
+    statusCode === '404' ||
+    code === 'nosuchkey' ||
+    code === 'not_found' ||
+    message.includes('object not found') ||
+    message.includes('the resource was not found') ||
+    message.includes('no such key') ||
+    message.includes('not found')
+  );
+}
+
+export function mapSupabaseStorageError(
+  error: SupabaseStorageErrorLike
+): AppError {
+  const status = error.status;
+  const statusCode = (error.statusCode ?? '').trim();
+  const code = (error.code ?? '').trim().toLowerCase();
+  const message = (error.message ?? '').toLowerCase();
+
+  if (isStorageNotFoundError(error)) {
+    return new AppError(ERROR_CODES.SIMULADO_PDF_NOT_FOUND, 404);
+  }
+
+  if (
+    status === 413 ||
+    statusCode === '413' ||
+    code === 'entitytoolarge' ||
+    message.includes('payload too large') ||
+    message.includes('maximum allowed size') ||
+    message.includes('exceeded the maximum') ||
+    message.includes('file size limit')
+  ) {
+    return new AppError(ERROR_CODES.SIMULADO_PDF_TOO_LARGE, 413);
+  }
+
+  if (
+    status === 401 ||
+    statusCode === '401' ||
+    message.includes('unauthorized') ||
+    message.includes('invalid jwt') ||
+    message.includes('jwt expired')
+  ) {
+    return new AppError(ERROR_CODES.UNAUTHORIZED, 401);
+  }
+
+  if (
+    status === 403 ||
+    statusCode === '403' ||
+    code === 'accessdenied' ||
+    message.includes('row-level security') ||
+    message.includes('forbidden') ||
+    message.includes('permission denied') ||
+    message.includes('access denied')
+  ) {
+    return new AppError(ERROR_CODES.FORBIDDEN, 403);
+  }
+
+  if (
+    status === 415 ||
+    statusCode === '415' ||
+    message.includes('mime type') ||
+    message.includes('invalid file')
+  ) {
+    return new AppError(ERROR_CODES.SIMULADO_PDF_INVALID_TYPE, 400);
+  }
+
+  return new AppError(ERROR_CODES.INTERNAL_SERVER_ERROR, 500);
 }

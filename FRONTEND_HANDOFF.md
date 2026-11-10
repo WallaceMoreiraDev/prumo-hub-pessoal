@@ -7,7 +7,7 @@ Este documento registra as entregas da **Backend AI** (rotas, contratos em `/sha
 ## Status de Entregas
 
 - [x] **Setup Inicial & Contratos Base (`/shared`)**
-- [ ] **Módulo 1: Simulados (Preparação, Execução, Pós-Prova e Exportação IA)**
+- [x] **Módulo 1: Simulados (Preparação, Execução, Pós-Prova e Exportação IA)**
 - [x] **Módulo 2: Caderno de Erros (Listagem, Cadastro Manual Restrito e Revisão)**
 - [x] **Módulo 3: Temas, Revisão e Conexões Bidirecionais** *(entregue primeiro conforme ordem acordada para o backend)*
 
@@ -143,13 +143,13 @@ Todos os contratos são importáveis de `@shared` (ou caminhos específicos em `
   - Tuplas `as const`: `REVIEW_MODES`, `SIMULADO_STATUSES`, `QUESTAO_RESULTADOS`, `ERRO_ORIGENS`, `MANUAL_ERROR_ORIGINS`, `ERRO_STATUSES`.
 - [`auth.types.ts`](./shared/types/auth.types.ts): `AuthUserDto`, `HealthCheckDto` (`status`, `timestamp`, `runtime: 'cloudflare-workers'`).
 - [`temas.types.ts`](./shared/types/temas.types.ts): `TemaSortBy`, `TEMA_SORT_OPTIONS`, `TemaSummaryDto`, `TemaDto`, `TemaListItemDto`, `ReflexaoDto`, `TemaDetalheDto`.
-- [`simulados.types.ts`](./shared/types/simulados.types.ts): `SimuladoPensamentoDto`, `SimuladoQuestaoDto`, `SimuladoDto`, `SimuladoDetalheDto`, `SimuladoPdfSignedUrlDto`, `SimuladoExportIaDto`.
+- [`simulados.types.ts`](./shared/types/simulados.types.ts): `SIMULADO_SORT_OPTIONS`, `SimuladoSortBy`, `SIMULADO_PDF_MAX_SIZE_BYTES` (`20 MiB`), `SIMULADO_PDF_SIGNED_URL_TTL_SECONDS` (`3600`), `SimuladoPensamentoDto`, `SimuladoQuestaoDto`, `SimuladoDto`, `SimuladoListItemDto`, `SimuladoDetalheDto`, `SimuladoPdfSignedUrlDto`, `SimuladoExportIaDto`.
 - [`caderno-erros.types.ts`](./shared/types/caderno-erros.types.ts): `CADERNO_ERRO_SORT_OPTIONS`, `CadernoErroSortBy`, `CadernoErroSimuladoMetaDto`, `CadernoErroDto`.
 
 #### Schemas Zod (`/shared/schemas/`)
 - [`common.schema.ts`](./shared/schemas/common.schema.ts): `UuidSchema`, `UuidParamSchema`, `PaginationQuerySchema` (`page` `1..10000`, `limit` `1..100`, `search` max `120`), `HttpUrlSchema` (`trim()` antes de validar URL `http`/`https`, max `2048`).
 - [`temas.schema.ts`](./shared/schemas/temas.schema.ts): `TemaNomeSchema` (trim, não vazio, max `80`, proibido `#`), `CreateTemaSchema`, `UpdateTemaSchema`, `TemasQuerySchema` (`page`, `limit`, `search`, `sortBy`, `reviewMode`), `RegistrarPraticaSchema`, `CreateReflexaoSchema` (impede `temaPrincipalId` em `temaConectadoIds`), `UpdateReflexaoSchema`.
-- [`simulados.schema.ts`](./shared/schemas/simulados.schema.ts): `CreateSimuladoSchema` (`duracaoConfiguradaSegundos` inteiro `1..86400`), `UpdateSimuladoSchema`, `SimuladosQuerySchema`, `CreateSimuladoQuestaoSchema`, `UpdateSimuladoQuestaoSchema`, `CreateSimuladoPensamentoSchema`, `UpdateSimuladoPensamentoSchema`, `FinalizarSimuladoSchema`, `ClassificarQuestaoSimuladoSchema` (`temaIds` padrão `[]`, rejeita `observacaoPosRevisao` preenchida quando `resultado === 'ACERTEI'` e normaliza para `null`).
+- [`simulados.schema.ts`](./shared/schemas/simulados.schema.ts): `CreateSimuladoSchema` (`duracaoConfiguradaSegundos` inteiro `1..86400`), `UpdateSimuladoSchema`, `SimuladosQuerySchema` (`page`, `limit`, `search`, `status`, `sortBy`), `SimuladoQuestaoParamsSchema`, `SimuladoPensamentoParamsSchema`, `CreateSimuladoQuestaoSchema`, `UpdateSimuladoQuestaoSchema`, `CreateSimuladoPensamentoSchema`, `UpdateSimuladoPensamentoSchema`, `FinalizarSimuladoSchema`, `ClassificarQuestaoSimuladoSchema` (`temaIds` padrão `[]`, rejeita `observacaoPosRevisao` preenchida quando `resultado === 'ACERTEI'` e normaliza para `null`).
 - [`caderno-erros.schema.ts`](./shared/schemas/caderno-erros.schema.ts): `CreateManualErrorSchema` (`z.discriminatedUnion('origem', ...)` aceitando **exclusivamente** `EXTERNAL_LINK` — normalizando `titulo: ""` para `undefined` — e `GENERIC_FULL`), `UpdateCadernoErroSchema`, `CadernoErrosQuerySchema` (`page`, `limit`, `search`, `status`, `temaId`, `origem`, `sortBy`), `RevisarCadernoErroSchema`.
 
 ---
@@ -545,3 +545,259 @@ Exclui um registro do Caderno de Erros (e seus vínculos em `caderno_erro_temas`
 - **Params:** `id` (`UUID`)
 - **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
 - **Erros:** `404 CADERNO_ERRO_NOT_FOUND`.
+
+---
+
+## Módulo 1: Simulados (Preparação, Execução, Pós-Prova e Exportação IA)
+
+Todas as rotas abaixo exigem autenticação via `Authorization: Bearer <token>` (isolamento multi-usuário estrito por RLS, inclusive no bucket privado `simulado-pdfs`).
+
+### 1. Regras de Negócio & Dicas de UI
+
+- **Máquina de Estados Estrita (`PREPARACAO` → `EM_ANDAMENTO` → `FINALIZADO`):**
+  - Em **`PREPARACAO`**: edição completa (`titulo`, `duracaoConfiguradaSegundos`), upload/substituição/remoção de PDF e CRUD inline de questões; exige ao menos `1` questão para iniciar (`400 SIMULADO_REQUIRES_QUESTAO`).
+  - Em **`EM_ANDAMENTO`**: bloqueia edição de metadados do simulado (`PATCH /simulados/:id`), alterações de PDF e alterações de questões (`409 SIMULADO_INVALID_STATUS_TRANSITION`); libera criação, edição e exclusão de pensamentos em tempo real.
+  - Em **`FINALIZADO`**: permite editar apenas `titulo` em `PATCH /simulados/:id` (alterar `duracaoConfiguradaSegundos` retorna `409`), editar/excluir pensamentos pós-prova, classificar questões e gerar exportação Markdown para IA.
+- **Blindagem da Execução de Prova (`GEMINI.md` 6):**
+  - **Cronômetro Resiliente:** `startedAt` (UTC ISO 8601) + `duracaoConfiguradaSegundos` vêm persistidos do backend; o Frontend deve calcular o restante via timestamp real (`startedAt + duracaoConfiguradaSegundos - now`) para resistir a `F5` ou fechamento da aba.
+  - **PDF Isolado (`React.memo`):** `GET /simulados/:id` já retorna `pdfSignedUrl` (TTL `3600s` = `SIMULADO_PDF_SIGNED_URL_TTL_SECONDS`). Para provas longas (> 1h), renove a URL usando `GET /api/v1/simulados/:id/pdf-url` sem desmontar o visualizador.
+- **Upload de PDF (`POST /api/v1/simulados/:id/pdf`):**
+  - Envie `multipart/form-data` com campo `file` (`File`), sem definir `Content-Type` manualmente no `fetch` (deixe o browser gerar o `boundary`).
+  - Tamanho máximo **`20 MiB`** (`SIMULADO_PDF_MAX_SIZE_BYTES`); validação server-side de MIME + magic bytes `%PDF-`.
+- **Acoplamento Pós-Prova (`classificar` — `GEMINI.md` 3.1 e 3.2):**
+  - **`ACERTEI`:** exige `observacaoPosRevisao` vazia/`null`; atualiza `lastReviewedAt = now` e `lastReviewMode = 'SOLO'` em todos os `temaIds` vinculados (quando `temaIds.length > 0`) e **remove** eventual registro prévio daquela questão no Caderno de Erros.
+  - **`PARCIAL` ou `ERREI`:** permite `observacaoPosRevisao`; faz upsert atômico em `caderno_erros` (`origem: 'SIMULADO'`, `status: 'PENDENTE'`) e **NÃO** altera `lastReviewedAt`/`lastReviewMode` dos temas vinculados.
+- **Invalidação Obrigatória no TanStack Query:**
+  - Mutações em simulados/questões/pensamentos/PDF devem invalidar `['simulados']` e `['simulados', simuladoId]`.
+  - Mutações em `POST /simulados/:id/questoes/:questaoId/classificar` **devem invalidar** `['simulados']`, `['simulados', simuladoId]`, **`['caderno-erros']`** e **`['temas']`**.
+  - Mutações em `DELETE /simulados/:id` também devem invalidar **`['caderno-erros']`** (pois a exclusão remove em cascata erros originados do simulado).
+
+---
+
+### 2. Endpoints — Recurso Principal (`/api/v1/simulados`)
+
+#### `GET /api/v1/simulados`
+Lista paginada para o **1º nível** (cartões/linhas de simulados) com métricas agregadas calculadas em batch sem queries N+1 e **sem** gerar `pdfSignedUrl`.
+
+- **Query Params (`SimuladosQuerySchema`):**
+  - `page` *(number, default `1`, `1..10000`)*
+  - `limit` *(number, default `20`, `1..100`)*
+  - `status` *(`'PREPARACAO' | 'EM_ANDAMENTO' | 'FINALIZADO'`, opcional)*
+  - `search` *(string, opcional, max `120`)* — filtro case-insensitive (`ILIKE`) em `titulo`.
+  - `sortBy` *(`'recent' | 'oldest'`, default `'recent'`)* — `createdAt DESC, id ASC` (`'recent'`) ou `createdAt ASC, id ASC` (`'oldest'`).
+- **Resposta `200` (`ApiSuccessResponse<SimuladoListItemDto[]>` com `meta.pagination`):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440030",
+        "userId": "550e8400-e29b-41d4-a716-446655440000",
+        "titulo": "OBI 2024 Fase 2 - Turno B",
+        "duracaoConfiguradaSegundos": 14400,
+        "tempoGastoSegundos": 12310,
+        "pdfStoragePath": "550e8400.../simulados/660e8400.../prova.pdf",
+        "hasPdf": true,
+        "status": "FINALIZADO",
+        "startedAt": "2026-11-10T14:00:00.000Z",
+        "finishedAt": "2026-11-10T17:25:10.000Z",
+        "createdAt": "2026-11-10T13:30:00.000Z",
+        "updatedAt": "2026-11-10T17:25:10.000Z",
+        "totalQuestoes": 3,
+        "totalQuestoesClassificadas": 3,
+        "totalAcertos": 1,
+        "totalParciais": 1,
+        "totalErros": 1,
+        "totalPensamentos": 5
+      }
+    ],
+    "meta": {
+      "pagination": {
+        "page": 1,
+        "limit": 20,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  }
+  ```
+
+#### `GET /api/v1/simulados/:id`
+Retorna detalhes completos (`SimuladoDetalheDto`) com questões ordenadas (`ordem ASC, createdAt ASC, id ASC`), temas ordenados por `nome`, pensamentos em ordem cronológica e `pdfSignedUrl` (ou `null` com aviso em log caso o arquivo falte no Storage, sem bloquear a prova).
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoDetalheDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`.
+
+#### `POST /api/v1/simulados`
+Cria um novo simulado em `status: 'PREPARACAO'`.
+
+- **Body (`CreateSimuladoSchema`):**
+  ```json
+  {
+    "titulo": "Codeforces Round 980 Div. 2",
+    "duracaoConfiguradaSegundos": 7200
+  }
+  ```
+- **Resposta `201`:** `ApiSuccessResponse<SimuladoDetalheDto>` (`pdfSignedUrl: null`, `questoes: []`)
+- **Erros:** `400 VALIDATION_ERROR`.
+
+#### `PATCH /api/v1/simulados/:id`
+Atualiza metadados do simulado conforme seu status:
+- `PREPARACAO`: aceita `titulo` e/ou `duracaoConfiguradaSegundos`.
+- `EM_ANDAMENTO`: bloqueado (`409 SIMULADO_INVALID_STATUS_TRANSITION`).
+- `FINALIZADO`: aceita apenas `titulo`; enviar `duracaoConfiguradaSegundos` retorna `409 SIMULADO_INVALID_STATUS_TRANSITION`.
+
+- **Params:** `id` (`UUID`)
+- **Body (`UpdateSimuladoSchema` — ao menos 1 campo):** `{ "titulo"?, "duracaoConfiguradaSegundos"? }`
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoDetalheDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+#### `DELETE /api/v1/simulados/:id`
+Exclui o simulado no banco (cascateando questões, vínculos de temas, pensamentos e eventuais itens no Caderno de Erros) e remove o PDF associado no Storage (best-effort).
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
+- **Erros:** `404 SIMULADO_NOT_FOUND`.
+
+---
+
+### 3. Endpoints — Execução (`iniciar` e `finalizar`)
+
+#### `POST /api/v1/simulados/:id/iniciar`
+Transiciona `PREPARACAO` → `EM_ANDAMENTO`, define `startedAt = now()` e `tempoGastoSegundos = 0`. Exige ao menos `1` questão cadastrada.
+
+- **Params:** `id` (`UUID`)
+- **Body:** nenhum
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoDetalheDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 SIMULADO_REQUIRES_QUESTAO`.
+
+#### `POST /api/v1/simulados/:id/finalizar`
+Transiciona `EM_ANDAMENTO` → `FINALIZADO`, grava `finishedAt` (com proteção contra clock skew garantindo `finishedAt >= startedAt`) e `tempoGastoSegundos`.
+
+- **Params:** `id` (`UUID`)
+- **Body (`FinalizarSimuladoSchema`):** `{ "tempoGastoSegundos": 6840 }` (`0..864000`)
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoDetalheDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+---
+
+### 4. Endpoints — PDF Privado (`simulado-pdfs`)
+
+#### `POST /api/v1/simulados/:id/pdf`
+Faz upload/substituição do PDF da prova em `status === 'PREPARACAO'` via `multipart/form-data` com campo `file`. Armazena sob `${userId}/simulados/${simuladoId}/${uuid}.pdf`, valida limite (`20 MiB`), MIME e magic bytes `%PDF-`, faz rollback no Storage em caso de falha de persistência no banco e remove o PDF anterior em substituição.
+
+- **Params:** `id` (`UUID`)
+- **Body:** `multipart/form-data` (`file`: `File` `.pdf`, `<= 20 MiB`)
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoDetalheDto>` (já com `hasPdf: true` e `pdfSignedUrl` preenchida)
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR` (campo `file` ausente/inválido), `400 SIMULADO_PDF_INVALID_TYPE`, `413 SIMULADO_PDF_TOO_LARGE`.
+
+#### `GET /api/v1/simulados/:id/pdf-url`
+Gera uma nova URL assinada (`SimuladoPdfSignedUrlDto`) válida por `3600` segundos. Disponível em qualquer status desde que o simulado possua PDF.
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "signedUrl": "https://<project>.supabase.co/storage/v1/object/sign/simulado-pdfs/...",
+      "expiresInSeconds": 3600
+    }
+  }
+  ```
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_PDF_NOT_FOUND`.
+
+#### `DELETE /api/v1/simulados/:id/pdf`
+Remove o PDF vinculado ao simulado (permitido apenas em `status === 'PREPARACAO'`), limpando `pdfStoragePath` e removendo o objeto do Storage.
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoDetalheDto>` (`hasPdf: false`, `pdfSignedUrl: null`)
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `404 SIMULADO_PDF_NOT_FOUND`.
+
+---
+
+### 5. Endpoints — Questões e Classificação Pós-Prova
+
+#### `POST /api/v1/simulados/:id/questoes`
+Adiciona uma questão na fase de preparação (`status === 'PREPARACAO'`). Se `ordem` for omitida, atribui `(maxOrdemAtual ?? 0) + 1`.
+
+- **Params:** `id` (`UUID`)
+- **Body (`CreateSimuladoQuestaoSchema`):** `{ "numeroQuestao": "Q1", "tituloQuestao": "Árvore Geradora Mínima", "ordem"?: 1 }`
+- **Resposta `201`:** `ApiSuccessResponse<SimuladoQuestaoDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+#### `PATCH /api/v1/simulados/:id/questoes/:questaoId`
+Edita uma questão pertencente ao simulado em `status === 'PREPARACAO'`.
+
+- **Params:** `id` (`UUID`), `questaoId` (`UUID`) (`SimuladoQuestaoParamsSchema`)
+- **Body (`UpdateSimuladoQuestaoSchema`):** `{ "numeroQuestao"?, "tituloQuestao"?, "ordem"? }`
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoQuestaoDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_QUESTAO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+#### `DELETE /api/v1/simulados/:id/questoes/:questaoId`
+Remove uma questão do simulado em `status === 'PREPARACAO'`.
+
+- **Params:** `id` (`UUID`), `questaoId` (`UUID`)
+- **Resposta `200`:** `{ "success": true, "data": { "id": "<questaoId>" } }`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_QUESTAO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`.
+
+#### `POST /api/v1/simulados/:id/questoes/:questaoId/classificar`
+Classifica a questão após o encerramento (`status === 'FINALIZADO'`) invocando a RPC transacional **`rpc_classificar_questao_simulado`**.
+
+- **Params:** `id` (`UUID`), `questaoId` (`UUID`)
+- **Body (`ClassificarQuestaoSimuladoSchema`):**
+  ```json
+  {
+    "resultado": "PARCIAL",
+    "temaIds": ["550e8400-e29b-41d4-a716-446655440001"],
+    "observacaoPosRevisao": "Faltou tratar componentes desconexos."
+  }
+  ```
+  - Quando `resultado === 'ACERTEI'`, enviar `observacaoPosRevisao: null` ou omitir o campo (texto não vazio retorna `400 VALIDATION_ERROR`).
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoQuestaoDto>` (hidratado com `temas` e `pensamentos`)
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_QUESTAO_NOT_FOUND`, `404 TEMA_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+---
+
+### 6. Endpoints — Pensamentos e Exportação para IA
+
+#### `POST /api/v1/simulados/:id/pensamentos`
+Registra um pensamento durante a prova (`status === 'EM_ANDAMENTO'`) vinculado a uma questão pertencente ao simulado.
+
+- **Params:** `id` (`UUID`)
+- **Body (`CreateSimuladoPensamentoSchema`):** `{ "simuladoQuestaoId": "<uuid>", "descricao": "Tentei usar busca binária na resposta.", "tempoDecorridoSegundos": 845 }` *(campo `tempoDecorridoSegundos` opcional/nullable)*
+- **Resposta `201`:** `ApiSuccessResponse<SimuladoPensamentoDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_QUESTAO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+#### `PATCH /api/v1/simulados/:id/pensamentos/:pensamentoId`
+Edita um pensamento (permitido em `'EM_ANDAMENTO'` e `'FINALIZADO'`; bloqueado em `'PREPARACAO'`). Se `simuladoQuestaoId` for alterado, a questão destino também precisa pertencer ao mesmo simulado.
+
+- **Params:** `id` (`UUID`), `pensamentoId` (`UUID`) (`SimuladoPensamentoParamsSchema`)
+- **Body (`UpdateSimuladoPensamentoSchema`):** `{ "simuladoQuestaoId"?, "descricao"?, "tempoDecorridoSegundos"? }`
+- **Resposta `200`:** `ApiSuccessResponse<SimuladoPensamentoDto>`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_PENSAMENTO_NOT_FOUND`, `404 SIMULADO_QUESTAO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`, `400 VALIDATION_ERROR`.
+
+#### `DELETE /api/v1/simulados/:id/pensamentos/:pensamentoId`
+Exclui um pensamento do simulado (permitido em `'EM_ANDAMENTO'` e `'FINALIZADO'`; bloqueado em `'PREPARACAO'`).
+
+- **Params:** `id` (`UUID`), `pensamentoId` (`UUID`)
+- **Resposta `200`:** `{ "success": true, "data": { "id": "<pensamentoId>" } }`
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `404 SIMULADO_PENSAMENTO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`.
+
+#### `GET /api/v1/simulados/:id/export-ia`
+Gera o resumo completo em Markdown estruturado (`SimuladoExportIaDto`) para análise externa com IA (permitido apenas em `status === 'FINALIZADO'`), sem emojis, com nomes de temas limpos sem `#`, resumo de duração/tempo/resultados, questões ordenadas e timeline cronológica `[MM:SS]` / `[HH:MM:SS]` / `[--:--]`.
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200` (`SimuladoExportIaDto`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "simuladoId": "660e8400-e29b-41d4-a716-446655440030",
+      "titulo": "OBI 2024 Fase 2",
+      "markdown": "# Revisão de Simulado: OBI 2024 Fase 2\n..."
+    }
+  }
+  ```
+- **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`.
