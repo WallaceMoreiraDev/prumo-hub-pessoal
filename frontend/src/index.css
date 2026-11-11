@@ -58,3 +58,11 @@
     @apply bg-background font-sans text-foreground antialiased selection:bg-primary/15 selection:text-primary;
   }
 }
+
+.katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
