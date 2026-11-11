@@ -2,6 +2,7 @@ import type { CadernoErroDto } from '@shared/types/caderno-erros.types';
 import {
   Calendar,
   CheckCircle2,
+  ChevronUp,
   Clock,
   ExternalLink,
   FileText,
@@ -10,6 +11,7 @@ import {
   Pencil,
   Timer,
 } from 'lucide-react';
+import { CollapsibleStickySection } from '@/components/layout/CollapsibleStickySection';
 import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +25,7 @@ import { formatLocalDateTime } from '@/lib/date';
 export interface CadernoErroDrawerContentProps {
   erro: CadernoErroDto;
   onEdit: (erro: CadernoErroDto) => void;
+  onCollapse?: () => void;
 }
 
 function getResultadoBadgeVariant(
@@ -43,11 +46,12 @@ function getResultadoBadgeVariant(
 export function CadernoErroDrawerContent({
   erro,
   onEdit,
+  onCollapse,
 }: CadernoErroDrawerContentProps) {
   const safeLink = isSafeHttpUrl(erro.linkExterno) ? erro.linkExterno : null;
 
   return (
-    <div className="animate-accordion-down space-y-4 border-t border-border bg-muted/30 p-4 sm:p-5">
+    <div className="animate-accordion-down space-y-4 rounded-b-2xl border-t border-border bg-muted/30 p-4 sm:p-5">
       <section
         aria-label="Metadados e temas vinculados"
         className="space-y-3 rounded-xl border border-border bg-card p-4"
@@ -141,48 +145,51 @@ export function CadernoErroDrawerContent({
                 ) : null}
               </div>
 
-              <div className="space-y-2 border-t border-border/60 pt-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <Clock
-                    className="h-3.5 w-3.5 shrink-0 text-primary"
-                    strokeWidth={1.75}
-                  />
-                  <span>
-                    Pensamentos durante a prova (
-                    {erro.simuladoMeta.pensamentos.length})
-                  </span>
-                </div>
-
-                {erro.simuladoMeta.pensamentos.length === 0 ? (
-                  <p className="text-xs italic leading-relaxed text-muted-foreground">
-                    Nenhum pensamento registrado durante a prova para esta
-                    questão.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {erro.simuladoMeta.pensamentos.map((pensamento) => {
-                      const formattedTempo = formatTempoDecorrido(
-                        pensamento.tempoDecorridoSegundos
-                      );
-                      return (
-                        <li
-                          key={pensamento.id}
-                          className="flex flex-col gap-1.5 rounded-xl border border-border/70 bg-muted/30 p-3 sm:flex-row sm:items-start sm:gap-3"
-                        >
-                          <span className="shrink-0 whitespace-nowrap font-mono text-xs font-medium text-muted-foreground">
-                            {formattedTempo
-                              ? `[${formattedTempo}]`
-                              : formatLocalDateTime(pensamento.createdAt)}
-                          </span>
-                          <MarkdownMathRenderer
-                            content={pensamento.descricao}
-                            className="min-w-0 flex-1"
-                          />
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+              <div className="border-t border-border/60 pt-3">
+                <CollapsibleStickySection
+                  variant="standalone"
+                  headingAs="h4"
+                  ariaLabel="Pensamentos durante a prova"
+                  title={`Pensamentos durante a prova (${erro.simuladoMeta.pensamentos.length})`}
+                  icon={
+                    <Clock
+                      className="h-3.5 w-3.5 text-primary"
+                      strokeWidth={1.75}
+                    />
+                  }
+                  defaultOpen={true}
+                >
+                  {erro.simuladoMeta.pensamentos.length === 0 ? (
+                    <p className="text-xs italic leading-relaxed text-muted-foreground">
+                      Nenhum pensamento registrado durante a prova para esta
+                      questão.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {erro.simuladoMeta.pensamentos.map((pensamento) => {
+                        const formattedTempo = formatTempoDecorrido(
+                          pensamento.tempoDecorridoSegundos
+                        );
+                        return (
+                          <li
+                            key={pensamento.id}
+                            className="flex flex-col gap-1.5 rounded-xl border border-border/70 bg-muted/30 p-3 sm:flex-row sm:items-start sm:gap-3"
+                          >
+                            <span className="shrink-0 whitespace-nowrap font-mono text-xs font-medium text-muted-foreground">
+                              {formattedTempo
+                                ? `[${formattedTempo}]`
+                                : formatLocalDateTime(pensamento.createdAt)}
+                            </span>
+                            <MarkdownMathRenderer
+                              content={pensamento.descricao}
+                              className="min-w-0 flex-1"
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </CollapsibleStickySection>
               </div>
             </>
           ) : (
@@ -238,18 +245,19 @@ export function CadernoErroDrawerContent({
       ) : null}
 
       {erro.origem === 'GENERIC_FULL' ? (
-        <section
-          aria-label="Enunciado completo da questão"
-          className="space-y-3 rounded-xl border border-border bg-card p-4"
-        >
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+        <CollapsibleStickySection
+          variant="card"
+          ariaLabel="Enunciado completo da questão"
+          title="Enunciado completo"
+          icon={
             <FileText
-              className="h-3.5 w-3.5 shrink-0 text-primary"
+              className="h-4 w-4 text-primary"
               strokeWidth={1.75}
             />
-            <span>Enunciado completo</span>
-          </div>
-
+          }
+          defaultOpen={true}
+          bodyClassName="space-y-3"
+        >
           {erro.enunciadoCompleto ? (
             <MarkdownMathRenderer content={erro.enunciadoCompleto} />
           ) : (
@@ -283,24 +291,21 @@ export function CadernoErroDrawerContent({
               )}
             </div>
           ) : null}
-        </section>
+        </CollapsibleStickySection>
       ) : null}
 
-      <section
-        aria-label="Observação pós-revisão"
-        className="space-y-2.5 rounded-xl border border-border bg-card p-4"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <MessageSquareText
-              className="h-4 w-4 shrink-0 text-primary"
-              strokeWidth={1.75}
-            />
-            <h3 className="text-sm font-semibold text-foreground">
-              Observação pós-revisão / diagnóstico
-            </h3>
-          </div>
-
+      <CollapsibleStickySection
+        variant="card"
+        ariaLabel="Observação pós-revisão"
+        title="Observação pós-revisão / diagnóstico"
+        icon={
+          <MessageSquareText
+            className="h-4 w-4 text-primary"
+            strokeWidth={1.75}
+          />
+        }
+        defaultOpen={true}
+        actions={
           <Button
             type="button"
             variant="outline"
@@ -311,8 +316,8 @@ export function CadernoErroDrawerContent({
             <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
             <span>Editar observação / temas</span>
           </Button>
-        </div>
-
+        }
+      >
         {erro.observacaoErro ? (
           <MarkdownMathRenderer content={erro.observacaoErro} />
         ) : (
@@ -320,7 +325,22 @@ export function CadernoErroDrawerContent({
             Nenhuma observação pós-revisão registrada até o momento.
           </p>
         )}
-      </section>
+      </CollapsibleStickySection>
+
+      {onCollapse ? (
+        <div className="flex justify-end border-t border-border/60 pt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCollapse}
+            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <span>Recolher detalhes</span>
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -29,6 +29,12 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  ListUpdatingStatus,
+  ListUpdatingTopBar,
+  SearchUpdatingSpinner,
+  getSearchInputPaddingClass,
+} from '@/components/layout/ListFilterFeedback';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -62,6 +68,7 @@ import {
 } from '@/features/simulados/utils/simulados';
 import { formatLocalDate, formatLocalDateTime } from '@/lib/date';
 import { getErrorMessage } from '@/lib/errorMessages';
+import { cn } from '@/lib/utils';
 
 const PAGE_LIMIT = 20;
 type StatusTabValue = 'ALL' | SimuladoStatus;
@@ -192,6 +199,11 @@ export function SimuladosPage() {
     statusTab !== 'ALL' ||
     sortBy !== 'recent';
 
+  const isSearchPending = searchInput.trim() !== debouncedSearch;
+  const isUpdatingList = listQuery.isFetching || isSearchPending;
+  const showSkeleton =
+    listQuery.isPending || (listQuery.isPlaceholderData && items.length === 0);
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -244,8 +256,10 @@ export function SimuladosPage() {
 
         <section
           aria-label="Filtros e ordenação de simulados"
-          className="rounded-2xl border border-border bg-card p-3 sm:p-4"
+          className="relative overflow-hidden rounded-2xl border border-border bg-card p-3 sm:p-4"
         >
+          <ListUpdatingTopBar isUpdating={isUpdatingList} />
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
             <div className="relative min-w-0 sm:col-span-8 lg:col-span-9">
               <Search
@@ -258,7 +272,14 @@ export function SimuladosPage() {
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Buscar simulado por título..."
                 aria-label="Buscar simulados por título"
-                className="pl-9 pr-9"
+                className={getSearchInputPaddingClass(
+                  isUpdatingList,
+                  searchInput.length > 0
+                )}
+              />
+              <SearchUpdatingSpinner
+                isUpdating={isUpdatingList}
+                hasClearButton={searchInput.length > 0}
               />
               {searchInput.length > 0 ? (
                 <button
@@ -312,33 +333,43 @@ export function SimuladosPage() {
             </div>
           </div>
 
-          {hasCustomControls ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-              <span className="tabular-nums">
-                {pagination
-                  ? `${pagination.total} ${
-                      pagination.total === 1
-                        ? 'simulado encontrado'
-                        : 'simulados encontrados'
-                    }`
-                  : 'Filtros ou ordenação ativos'}
-              </span>
+          {hasCustomControls || isUpdatingList || pagination ? (
+            <div className="mt-3 flex min-h-7 flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+              {isUpdatingList ? (
+                <ListUpdatingStatus />
+              ) : (
+                <span className="tabular-nums">
+                  {pagination
+                    ? `${pagination.total} ${
+                        pagination.total === 1
+                          ? hasActiveFilters
+                            ? 'simulado encontrado'
+                            : 'simulado'
+                          : hasActiveFilters
+                            ? 'simulados encontrados'
+                            : 'simulados'
+                      }`
+                    : 'Filtros ou ordenação ativos'}
+                </span>
+              )}
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleClearFilters}
-                className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
-                <span>Limpar filtros</span>
-              </Button>
+              {hasCustomControls ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearFilters}
+                  className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  <span>Limpar filtros</span>
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </section>
 
-        {listQuery.isPending ? (
+        {showSkeleton ? (
           <SimuladosListSkeleton />
         ) : listQuery.isError ? (
           <div className="flex flex-col gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -403,7 +434,15 @@ export function SimuladosPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-3">
+            <div
+              aria-busy={isUpdatingList}
+              className={cn(
+                'space-y-3 transition-opacity duration-150',
+                isUpdatingList || listQuery.isPlaceholderData
+                  ? 'pointer-events-none select-none opacity-55'
+                  : 'opacity-100'
+              )}
+            >
               {items.map((simulado) => {
                 const detailTarget =
                   simulado.status === 'EM_ANDAMENTO'
@@ -643,7 +682,7 @@ export function SimuladosPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={pagination.page <= 1 || listQuery.isFetching}
+                    disabled={pagination.page <= 1 || isUpdatingList}
                     onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                     className="gap-1.5"
                   >
@@ -657,7 +696,7 @@ export function SimuladosPage() {
                     size="sm"
                     disabled={
                       pagination.page >= pagination.totalPages ||
-                      listQuery.isFetching
+                      isUpdatingList
                     }
                     onClick={() => setPage((prev) => prev + 1)}
                     className="gap-1.5"

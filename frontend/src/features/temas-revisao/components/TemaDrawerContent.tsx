@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   ArrowRight,
   BookX,
+  ChevronUp,
   GitCompareArrows,
   MessageSquareText,
   Pencil,
@@ -12,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CollapsibleStickySection } from '@/components/layout/CollapsibleStickySection';
 import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +35,7 @@ export interface TemaDrawerContentProps {
   onEditReflexao: (reflexao: ReflexaoDto) => void;
   onDeleteReflexao: (reflexao: ReflexaoDto) => void;
   onNavigateToTema: (targetTema: TemaSummaryDto) => void;
+  onCollapse?: () => void;
 }
 
 export function TemaDrawerContent({
@@ -44,12 +47,13 @@ export function TemaDrawerContent({
   onEditReflexao,
   onDeleteReflexao,
   onNavigateToTema,
+  onCollapse,
 }: TemaDrawerContentProps) {
   const detailQuery = useTemaDetailQuery(temaId, isExpanded);
 
   if (detailQuery.isPending) {
     return (
-      <div className="animate-accordion-down border-t border-border bg-muted/30 p-4 sm:p-5">
+      <div className="animate-accordion-down rounded-b-2xl border-t border-border bg-muted/30 p-4 sm:p-5">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -75,7 +79,7 @@ export function TemaDrawerContent({
 
   if (detailQuery.isError) {
     return (
-      <div className="animate-accordion-down border-t border-border bg-muted/30 p-4 sm:p-5">
+      <div className="animate-accordion-down space-y-3 rounded-b-2xl border-t border-border bg-muted/30 p-4 sm:p-5">
         <div className="flex flex-col gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-2.5 text-sm text-rose-600 dark:text-rose-400">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -94,6 +98,21 @@ export function TemaDrawerContent({
             <span>Tentar novamente</span>
           </Button>
         </div>
+
+        {onCollapse ? (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onCollapse}
+              className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span>Recolher tema</span>
+            </Button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -102,23 +121,24 @@ export function TemaDrawerContent({
   const temaSummary = toTemaSummary(detalhe);
 
   return (
-    <div className="animate-accordion-down border-t border-border bg-muted/30 p-4 sm:p-5">
+    <div className="animate-accordion-down rounded-b-2xl border-t border-border bg-muted/30 p-4 sm:p-5">
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <section aria-label="Reflexões Próprias" className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <MessageSquareText
-                className="h-4 w-4 shrink-0 text-primary"
-                strokeWidth={1.75}
-              />
-              <h3 className="truncate text-sm font-semibold text-foreground">
-                Reflexões Próprias
-              </h3>
-              <Badge variant="secondary" className="shrink-0 tabular-nums">
-                {detalhe.reflexoesProprias.length}
-              </Badge>
-            </div>
-
+        <CollapsibleStickySection
+          variant="standalone"
+          ariaLabel="Reflexões Próprias"
+          title="Reflexões Próprias"
+          icon={
+            <MessageSquareText
+              className="h-4 w-4 text-primary"
+              strokeWidth={1.75}
+            />
+          }
+          badge={
+            <Badge variant="secondary" className="shrink-0 tabular-nums">
+              {detalhe.reflexoesProprias.length}
+            </Badge>
+          }
+          actions={
             <Button
               type="button"
               variant="outline"
@@ -129,8 +149,9 @@ export function TemaDrawerContent({
               <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
               <span>Nova reflexão</span>
             </Button>
-          </div>
-
+          }
+          defaultOpen={true}
+        >
           {detalhe.reflexoesProprias.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-card/50 p-4 text-center text-xs leading-relaxed text-muted-foreground">
               Nenhuma reflexão própria registrada para este tema.
@@ -178,26 +199,24 @@ export function TemaDrawerContent({
               ))}
             </div>
           )}
-        </section>
+        </CollapsibleStickySection>
 
-        <section
-          aria-label="Conexões com Outros Temas"
-          className="min-w-0 space-y-3"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <GitCompareArrows
-                className="h-4 w-4 shrink-0 text-primary"
-                strokeWidth={1.75}
-              />
-              <h3 className="truncate text-sm font-semibold text-foreground">
-                Conexões com Outros Temas
-              </h3>
-              <Badge variant="secondary" className="shrink-0 tabular-nums">
-                {detalhe.conexoes.length}
-              </Badge>
-            </div>
-
+        <CollapsibleStickySection
+          variant="standalone"
+          ariaLabel="Conexões com Outros Temas"
+          title="Conexões com Outros Temas"
+          icon={
+            <GitCompareArrows
+              className="h-4 w-4 text-primary"
+              strokeWidth={1.75}
+            />
+          }
+          badge={
+            <Badge variant="secondary" className="shrink-0 tabular-nums">
+              {detalhe.conexoes.length}
+            </Badge>
+          }
+          actions={
             <Button
               type="button"
               variant="outline"
@@ -208,8 +227,9 @@ export function TemaDrawerContent({
               <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
               <span>Conectar tema</span>
             </Button>
-          </div>
-
+          }
+          defaultOpen={true}
+        >
           {detalhe.conexoes.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-card/50 p-4 text-center text-xs leading-relaxed text-muted-foreground">
               Nenhuma conexão bidirecional vinculada a este tema.
@@ -285,7 +305,7 @@ export function TemaDrawerContent({
               })}
             </div>
           )}
-        </section>
+        </CollapsibleStickySection>
       </div>
 
       <footer className="mt-5 flex flex-col gap-3 rounded-xl border border-border bg-card/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -312,17 +332,32 @@ export function TemaDrawerContent({
           </Badge>
         </div>
 
-        <Button
-          asChild
-          variant="outline"
-          size="sm"
-          className="w-full shrink-0 gap-1.5 sm:w-auto"
-        >
-          <Link to={`/caderno-erros?temaId=${encodeURIComponent(temaId)}`}>
-            <span>Ver erros deste tema</span>
-            <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.75} />
-          </Link>
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="w-full shrink-0 gap-1.5 sm:w-auto"
+          >
+            <Link to={`/caderno-erros?temaId=${encodeURIComponent(temaId)}`}>
+              <span>Ver erros deste tema</span>
+              <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </Link>
+          </Button>
+
+          {onCollapse ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onCollapse}
+              className="w-full shrink-0 gap-1.5 text-xs text-muted-foreground hover:text-foreground sm:w-auto"
+            >
+              <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span>Recolher tema</span>
+            </Button>
+          ) : null}
+        </div>
       </footer>
     </div>
   );

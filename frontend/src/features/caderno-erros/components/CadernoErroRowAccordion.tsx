@@ -68,7 +68,7 @@ export function CadernoErroRowAccordion({
     <article
       id={`caderno-erro-row-${erro.id}`}
       className={cn(
-        'scroll-mt-20 overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-700',
+        'scroll-mt-20 overflow-x-clip rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-700',
         showHelpHighlight && 'border-l-2 border-l-amber-500/80'
       )}
     >
@@ -279,7 +279,11 @@ export function CadernoErroRowAccordion({
 
       {isExpanded ? (
         <div id={`caderno-erro-drawer-${erro.id}`}>
-          <CadernoErroDrawerContent erro={erro} onEdit={onEdit} />
+          <CadernoErroDrawerContent
+            erro={erro}
+            onEdit={onEdit}
+            onCollapse={() => onToggleExpand(erro.id)}
+          />
         </div>
       ) : null}
     </article>

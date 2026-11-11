@@ -23,6 +23,12 @@ import {
   X,
 } from 'lucide-react';
 import {
+  ListUpdatingStatus,
+  ListUpdatingTopBar,
+  SearchUpdatingSpinner,
+  getSearchInputPaddingClass,
+} from '@/components/layout/ListFilterFeedback';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -325,6 +331,11 @@ export function TemasRevisaoPage() {
   const items = listQuery.data?.items ?? [];
   const pagination = listQuery.data?.pagination;
 
+  const isSearchPending = searchInput.trim() !== debouncedSearch;
+  const isUpdatingList = listQuery.isFetching || isSearchPending;
+  const showSkeleton =
+    listQuery.isPending || (listQuery.isPlaceholderData && items.length === 0);
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -382,8 +393,10 @@ export function TemasRevisaoPage() {
 
       <section
         aria-label="Filtros e ordenação de temas"
-        className="rounded-2xl border border-border bg-card p-3 sm:p-4"
+        className="relative overflow-hidden rounded-2xl border border-border bg-card p-3 sm:p-4"
       >
+        <ListUpdatingTopBar isUpdating={isUpdatingList} />
+
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full min-w-0 lg:max-w-sm">
             <Search
@@ -396,7 +409,14 @@ export function TemasRevisaoPage() {
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="Buscar tema pelo nome..."
               aria-label="Buscar tema pelo nome"
-              className="pl-9 pr-9"
+              className={getSearchInputPaddingClass(
+                isUpdatingList,
+                searchInput.length > 0
+              )}
+            />
+            <SearchUpdatingSpinner
+              isUpdating={isUpdatingList}
+              hasClearButton={searchInput.length > 0}
             />
             {searchInput.length > 0 ? (
               <button
@@ -486,33 +506,43 @@ export function TemasRevisaoPage() {
           </div>
         </div>
 
-        {hasCustomControls ? (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              {pagination
-                ? `${pagination.total} ${
-                    pagination.total === 1
-                      ? 'tema encontrado'
-                      : 'temas encontrados'
-                  }`
-                : 'Filtros ou ordenação ativos'}
-            </span>
+        {hasCustomControls || isUpdatingList || pagination ? (
+          <div className="mt-3 flex min-h-7 flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+            {isUpdatingList ? (
+              <ListUpdatingStatus />
+            ) : (
+              <span className="tabular-nums">
+                {pagination
+                  ? `${pagination.total} ${
+                      pagination.total === 1
+                        ? hasActiveFilters
+                          ? 'tema encontrado'
+                          : 'tema'
+                        : hasActiveFilters
+                          ? 'temas encontrados'
+                          : 'temas'
+                    }`
+                  : 'Filtros ou ordenação ativos'}
+              </span>
+            )}
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleClearFilters}
-              className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
-              <span>Limpar filtros</span>
-            </Button>
+            {hasCustomControls ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <span>Limpar filtros</span>
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </section>
 
-      {listQuery.isPending ? (
+      {showSkeleton ? (
         <TemasListSkeleton />
       ) : listQuery.isError ? (
         <div className="flex flex-col gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/10 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -570,7 +600,15 @@ export function TemasRevisaoPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="space-y-3">
+          <div
+            aria-busy={isUpdatingList}
+            className={cn(
+              'space-y-3 transition-opacity duration-150',
+              isUpdatingList || listQuery.isPlaceholderData
+                ? 'pointer-events-none select-none opacity-55'
+                : 'opacity-100'
+            )}
+          >
             {items.map((tema) => (
               <TemaRowAccordion
                 key={tema.id}
@@ -616,7 +654,7 @@ export function TemasRevisaoPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={pagination.page <= 1 || listQuery.isFetching}
+                  disabled={pagination.page <= 1 || isUpdatingList}
                   onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                   className="gap-1.5"
                 >
@@ -629,8 +667,7 @@ export function TemasRevisaoPage() {
                   variant="outline"
                   size="sm"
                   disabled={
-                    pagination.page >= pagination.totalPages ||
-                    listQuery.isFetching
+                    pagination.page >= pagination.totalPages || isUpdatingList
                   }
                   onClick={() => setPage((prev) => prev + 1)}
                   className="gap-1.5"

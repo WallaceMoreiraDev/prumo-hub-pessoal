@@ -8,6 +8,7 @@ import type {
 import {
   CheckCircle2,
   ChevronRight,
+  ChevronUp,
   Clock,
   HelpCircle,
   Loader2,
@@ -17,6 +18,7 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
+import { CollapsibleStickySection } from '@/components/layout/CollapsibleStickySection';
 import { MarkdownEditorField } from '@/components/markdown/MarkdownEditorField';
 import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import {
@@ -288,7 +290,7 @@ export function SimuladoQuestaoPosRow({
   return (
     <article
       className={cn(
-        'overflow-hidden rounded-2xl border border-border bg-card transition-colors',
+        'overflow-x-clip rounded-2xl border border-border bg-card transition-colors',
         'hover:border-slate-300 dark:hover:border-slate-700',
         questao.resultado === 'PARCIAL' && 'border-l-2 border-l-amber-500/80'
       )}
@@ -426,7 +428,7 @@ export function SimuladoQuestaoPosRow({
       </div>
 
       {isExpanded ? (
-        <div className="animate-accordion-down space-y-5 border-t border-border/60 bg-muted/30 p-4 sm:p-5">
+        <div className="animate-accordion-down space-y-5 rounded-b-2xl border-t border-border/60 bg-muted/30 p-4 sm:p-5">
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
             <section
               aria-label="Temas e pós-revisão da questão"
@@ -559,22 +561,20 @@ export function SimuladoQuestaoPosRow({
               )}
             </section>
 
-            <section
-              aria-label="Pensamentos registrados durante a prova"
-              className="space-y-3 rounded-xl border border-border bg-card p-4 lg:col-span-6"
+            <CollapsibleStickySection
+              variant="card"
+              ariaLabel="Pensamentos registrados durante a prova"
+              title={`Pensamentos da prova (${sortedPensamentos.length})`}
+              icon={
+                <Clock
+                  className="h-4 w-4 text-primary"
+                  strokeWidth={1.75}
+                />
+              }
+              defaultOpen={true}
+              className="lg:col-span-6"
+              bodyClassName="space-y-3"
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                  <Clock
-                    className="h-4 w-4 shrink-0 text-primary"
-                    strokeWidth={1.75}
-                  />
-                  <span>
-                    Pensamentos da prova ({sortedPensamentos.length})
-                  </span>
-                </div>
-              </div>
-
               {sortedPensamentos.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
                   Nenhum pensamento registrado para esta questão durante o
@@ -635,7 +635,20 @@ export function SimuladoQuestaoPosRow({
                   })}
                 </ul>
               )}
-            </section>
+            </CollapsibleStickySection>
+          </div>
+
+          <div className="flex justify-end border-t border-border/60 pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onToggleExpand(questao.id)}
+              className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span>Recolher questão</span>
+            </Button>
           </div>
         </div>
       ) : null}

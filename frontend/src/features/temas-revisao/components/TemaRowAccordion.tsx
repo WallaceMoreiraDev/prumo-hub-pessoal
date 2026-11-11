@@ -69,7 +69,7 @@ export function TemaRowAccordion({
     <article
       id={`tema-row-${tema.id}`}
       className={cn(
-        'scroll-mt-20 overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-700',
+        'scroll-mt-20 overflow-x-clip rounded-2xl border border-border bg-card shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-700',
         isHelpMode && 'border-l-2 border-l-amber-500/80'
       )}
     >
@@ -215,6 +215,7 @@ export function TemaRowAccordion({
             onEditReflexao={onEditReflexao}
             onDeleteReflexao={onDeleteReflexao}
             onNavigateToTema={onNavigateToTema}
+            onCollapse={() => onToggleExpand(tema.id)}
           />
         </div>
       ) : null}
