@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import {
   BookOpen,
   BookX,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ModuleRouteSkeleton } from '@/components/layout/RouteSkeletons';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -366,7 +367,9 @@ export function AppLayout() {
 
         <main className="min-w-0 flex-1">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-            <Outlet />
+            <Suspense fallback={<ModuleRouteSkeleton />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

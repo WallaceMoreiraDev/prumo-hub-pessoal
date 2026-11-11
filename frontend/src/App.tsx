@@ -1,20 +1,55 @@
+import { lazy, Suspense } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { EnvConfigErrorScreen } from '@/components/layout/EnvConfigErrorScreen';
+import {
+  LoginRouteSkeleton,
+  SimuladoExecucaoRouteSkeleton,
+} from '@/components/layout/RouteSkeletons';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { envValidation } from '@/config/env';
 import { AuthProvider } from '@/features/auth/AuthContext';
-import { LoginPage } from '@/features/auth/LoginPage';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
-import { CadernoErrosPage } from '@/features/caderno-erros/CadernoErrosPage';
-import { SimuladoDetalhePage } from '@/features/simulados/SimuladoDetalhePage';
-import { SimuladoExecucaoPage } from '@/features/simulados/SimuladoExecucaoPage';
-import { SimuladosPage } from '@/features/simulados/SimuladosPage';
-import { TemasRevisaoPage } from '@/features/temas-revisao/TemasRevisaoPage';
 import { queryClient } from '@/lib/queryClient';
+
+const LoginPage = lazy(() =>
+  import('@/features/auth/LoginPage').then((module) => ({
+    default: module.LoginPage,
+  }))
+);
+
+const TemasRevisaoPage = lazy(() =>
+  import('@/features/temas-revisao/TemasRevisaoPage').then((module) => ({
+    default: module.TemasRevisaoPage,
+  }))
+);
+
+const CadernoErrosPage = lazy(() =>
+  import('@/features/caderno-erros/CadernoErrosPage').then((module) => ({
+    default: module.CadernoErrosPage,
+  }))
+);
+
+const SimuladosPage = lazy(() =>
+  import('@/features/simulados/SimuladosPage').then((module) => ({
+    default: module.SimuladosPage,
+  }))
+);
+
+const SimuladoDetalhePage = lazy(() =>
+  import('@/features/simulados/SimuladoDetalhePage').then((module) => ({
+    default: module.SimuladoDetalhePage,
+  }))
+);
+
+const SimuladoExecucaoPage = lazy(() =>
+  import('@/features/simulados/SimuladoExecucaoPage').then((module) => ({
+    default: module.SimuladoExecucaoPage,
+  }))
+);
 
 export function App() {
   if (!envValidation.success) {
@@ -33,7 +68,14 @@ export function App() {
           <AuthProvider>
             <BrowserRouter>
               <Routes>
-                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  path="/login"
+                  element={
+                    <Suspense fallback={<LoginRouteSkeleton />}>
+                      <LoginPage />
+                    </Suspense>
+                  }
+                />
 
                 <Route element={<ProtectedRoute />}>
                   <Route element={<AppLayout />}>
@@ -51,7 +93,11 @@ export function App() {
                   </Route>
                   <Route
                     path="/simulados/:id/execucao"
-                    element={<SimuladoExecucaoPage />}
+                    element={
+                      <Suspense fallback={<SimuladoExecucaoRouteSkeleton />}>
+                        <SimuladoExecucaoPage />
+                      </Suspense>
+                    }
                   />
                 </Route>
 
