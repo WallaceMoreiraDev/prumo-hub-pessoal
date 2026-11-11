@@ -30,6 +30,7 @@ export const temasKeys = {
 };
 
 const CADERNO_ERROS_QUERY_KEY = ['caderno-erros'] as const;
+const SIMULADOS_QUERY_KEY = ['simulados'] as const;
 
 export function useTemasListQuery(filters: TemasListQueryParams) {
   return useQuery({
@@ -91,6 +92,7 @@ export function useUpdateTemaMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: temasKeys.all }),
         queryClient.invalidateQueries({ queryKey: CADERNO_ERROS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: SIMULADOS_QUERY_KEY }),
       ]);
       toast.success('Tema atualizado com sucesso.');
     },
@@ -109,6 +111,7 @@ export function useDeleteTemaMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: temasKeys.all }),
         queryClient.invalidateQueries({ queryKey: CADERNO_ERROS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: SIMULADOS_QUERY_KEY }),
       ]);
       toast.success('Tema excluído com sucesso.');
     },
@@ -128,6 +131,7 @@ export function useRegistrarPraticaMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: temasKeys.all }),
         queryClient.invalidateQueries({ queryKey: CADERNO_ERROS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: SIMULADOS_QUERY_KEY }),
       ]);
       const label =
         updatedTemas.length === 1
