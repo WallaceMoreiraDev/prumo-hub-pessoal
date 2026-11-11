@@ -10,6 +10,8 @@ import { AuthProvider } from '@/features/auth/AuthContext';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
 import { CadernoErrosPage } from '@/features/caderno-erros/CadernoErrosPage';
+import { SimuladoDetalhePage } from '@/features/simulados/SimuladoDetalhePage';
+import { SimuladoExecucaoPage } from '@/features/simulados/SimuladoExecucaoPage';
 import { SimuladosPage } from '@/features/simulados/SimuladosPage';
 import { TemasRevisaoPage } from '@/features/temas-revisao/TemasRevisaoPage';
 import { queryClient } from '@/lib/queryClient';
@@ -42,7 +44,15 @@ export function App() {
                       element={<CadernoErrosPage />}
                     />
                     <Route path="/simulados" element={<SimuladosPage />} />
+                    <Route
+                      path="/simulados/:id"
+                      element={<SimuladoDetalhePage />}
+                    />
                   </Route>
+                  <Route
+                    path="/simulados/:id/execucao"
+                    element={<SimuladoExecucaoPage />}
+                  />
                 </Route>
 
                 <Route path="*" element={<Navigate to="/temas" replace />} />
