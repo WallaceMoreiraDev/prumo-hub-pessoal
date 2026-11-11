@@ -8,6 +8,7 @@ import {
 import type { ReflexaoDto, TemaSummaryDto } from '@shared/types/temas.types';
 import { Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
+import { MarkdownEditorField } from '@/components/markdown/MarkdownEditorField';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,7 +19,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { TemaSelector } from '@/features/temas-revisao/components/TemaSelector';
 import {
   useCreateReflexaoMutation,
@@ -196,10 +196,12 @@ export function ReflexaoFormDialog({
                 {watchedConteudo.trim().length}/5000
               </span>
             </div>
-            <Textarea
+            <MarkdownEditorField
               id="reflexao-conteudo"
               rows={4}
               disabled={isSubmitting}
+              previewContent={watchedConteudo}
+              previewClassName="min-h-[120px] max-h-[300px] overflow-y-auto"
               placeholder="Descreva o insight, critério de escolha, armadilha comum ou relação entre os temas..."
               className="min-h-[120px] leading-relaxed"
               {...form.register('conteudo')}

@@ -4,6 +4,9 @@ import type {
   ManualErrorOrigin,
   QuestaoResultado,
 } from '@shared/types/enums.types';
+import { isSafeHttpUrl } from '@/lib/url';
+
+export { isSafeHttpUrl };
 
 export const ERRO_ORIGEM_LABELS: Record<ErroOrigem, string> = {
   SIMULADO: 'Simulado',
@@ -60,28 +63,6 @@ export function formatTempoDecorrido(seconds: number | null): string | null {
   }
 
   return `${padTwoDigits(minutes)}:${padTwoDigits(secs)}`;
-}
-
-/**
- * Garante que uma URL utilize estritamente os protocolos `http:` ou `https:`
- * antes de ser renderizada como link clicável na interface.
- */
-export function isSafeHttpUrl(url: string | null | undefined): boolean {
-  if (!url) {
-    return false;
-  }
-
-  const trimmed = url.trim();
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 function normalizeNullableText(value: string | null | undefined): string | null {

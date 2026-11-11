@@ -10,6 +10,7 @@ import {
   Pencil,
   Timer,
 } from 'lucide-react';
+import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -173,9 +174,10 @@ export function CadernoErroDrawerContent({
                               ? `[${formattedTempo}]`
                               : formatLocalDateTime(pensamento.createdAt)}
                           </span>
-                          <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                            {pensamento.descricao}
-                          </p>
+                          <MarkdownMathRenderer
+                            content={pensamento.descricao}
+                            className="min-w-0 flex-1"
+                          />
                         </li>
                       );
                     })}
@@ -248,9 +250,13 @@ export function CadernoErroDrawerContent({
             <span>Enunciado completo</span>
           </div>
 
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-            {erro.enunciadoCompleto ?? 'Enunciado não informado.'}
-          </p>
+          {erro.enunciadoCompleto ? (
+            <MarkdownMathRenderer content={erro.enunciadoCompleto} />
+          ) : (
+            <p className="text-xs italic leading-relaxed text-muted-foreground">
+              Enunciado não informado.
+            </p>
+          )}
 
           {erro.linkExterno ? (
             <div className="space-y-1 border-t border-border/60 pt-3">
@@ -308,9 +314,7 @@ export function CadernoErroDrawerContent({
         </div>
 
         {erro.observacaoErro ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-            {erro.observacaoErro}
-          </p>
+          <MarkdownMathRenderer content={erro.observacaoErro} />
         ) : (
           <p className="text-xs italic leading-relaxed text-muted-foreground">
             Nenhuma observação pós-revisão registrada até o momento.

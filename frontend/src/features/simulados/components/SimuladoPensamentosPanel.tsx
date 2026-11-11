@@ -12,6 +12,8 @@ import {
   Send,
   Trash2,
 } from 'lucide-react';
+import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
+import { SmartPasteTextarea } from '@/components/markdown/SmartPasteTextarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { formatTempoDecorrido } from '@/features/caderno-erros/utils/cadernoErros';
 import { PensamentoEditDialog } from '@/features/simulados/components/PensamentoEditDialog';
 import {
@@ -272,7 +273,7 @@ export function SimuladoPensamentosPanel({
               </span>
             </div>
 
-            <Textarea
+            <SmartPasteTextarea
               id="exec-pensamento-textarea"
               rows={3}
               maxLength={4000}
@@ -436,9 +437,7 @@ export function SimuladoPensamentosPanel({
                     </div>
                   </div>
 
-                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                    {pensamento.descricao}
-                  </p>
+                  <MarkdownMathRenderer content={pensamento.descricao} />
                 </li>
               );
             })}

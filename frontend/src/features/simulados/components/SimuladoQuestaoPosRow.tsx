@@ -17,6 +17,8 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
+import { MarkdownEditorField } from '@/components/markdown/MarkdownEditorField';
+import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +32,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { formatTempoDecorrido } from '@/features/caderno-erros/utils/cadernoErros';
 import { PensamentoEditDialog } from '@/features/simulados/components/PensamentoEditDialog';
 import {
@@ -459,12 +460,14 @@ export function SimuladoQuestaoPosRow({
                     </span>
                   </div>
 
-                  <Textarea
+                  <MarkdownEditorField
                     id={`pos-revisao-${questao.id}`}
                     rows={4}
                     maxLength={5000}
                     disabled={classificarMutation.isPending}
                     value={draftObservacao}
+                    previewContent={draftObservacao}
+                    previewClassName="max-h-[280px] overflow-y-auto"
                     onChange={(event) => {
                       setDraftObservacao(event.target.value);
                       if (observacaoError) {
@@ -472,18 +475,21 @@ export function SimuladoQuestaoPosRow({
                       }
                     }}
                     placeholder="Anote o que resolvia a questão, onde travou ou a técnica correta para futura revisão no Caderno de Erros..."
+                    helperText={
+                      observacaoError ? (
+                        <p className="text-xs text-rose-600 dark:text-rose-400">
+                          {observacaoError}
+                        </p>
+                      ) : (
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Suporta Markdown e fórmulas LaTeX ($...$, $$...$$,
+                          \(...\), \[...\]). Sincronizada automaticamente com o
+                          Caderno de Erros sem contar como revisão dos temas
+                          vinculados.
+                        </p>
+                      )
+                    }
                   />
-
-                  {observacaoError ? (
-                    <p className="text-xs text-rose-600 dark:text-rose-400">
-                      {observacaoError}
-                    </p>
-                  ) : (
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      Sincronizada automaticamente com o Caderno de Erros sem
-                      contar como revisão dos temas vinculados.
-                    </p>
-                  )}
 
                   <div className="flex justify-end">
                     <Button
@@ -623,9 +629,7 @@ export function SimuladoQuestaoPosRow({
                           </div>
                         </div>
 
-                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                          {pensamento.descricao}
-                        </p>
+                        <MarkdownMathRenderer content={pensamento.descricao} />
                       </li>
                     );
                   })}

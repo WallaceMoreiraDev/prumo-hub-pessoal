@@ -22,6 +22,7 @@ import {
   type UseFormSetError,
 } from 'react-hook-form';
 import { z } from 'zod';
+import { MarkdownEditorField } from '@/components/markdown/MarkdownEditorField';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,7 +35,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   useCreateCadernoErroMutation,
   useUpdateCadernoErroMutation,
@@ -317,10 +317,12 @@ function ExternalLinkSubform({
             {watchedObservacao.trim().length}/5000
           </span>
         </div>
-        <Textarea
+        <MarkdownEditorField
           id="erro-external-observacao"
           rows={3}
           disabled={isSubmitting}
+          previewContent={watchedObservacao}
+          previewClassName="max-h-[260px] overflow-y-auto"
           placeholder="Anote o que travou, qual ideia resolve o problema ou o erro cometido..."
           className="leading-relaxed"
           {...form.register('observacaoErro')}
@@ -495,10 +497,12 @@ function GenericFullSubform({
             {watchedEnunciado.trim().length}/15000
           </span>
         </div>
-        <Textarea
+        <MarkdownEditorField
           id="erro-generic-enunciado"
           rows={4}
           disabled={isSubmitting}
+          previewContent={watchedEnunciado}
+          previewClassName="min-h-[120px] max-h-[300px] overflow-y-auto"
           placeholder="Cole ou escreva o enunciado completo da questão para revisar sem depender de fontes externas..."
           className="min-h-[120px] leading-relaxed"
           {...form.register('enunciadoCompleto')}
@@ -564,10 +568,12 @@ function GenericFullSubform({
             {watchedObservacao.trim().length}/5000
           </span>
         </div>
-        <Textarea
+        <MarkdownEditorField
           id="erro-generic-observacao"
           rows={3}
           disabled={isSubmitting}
+          previewContent={watchedObservacao}
+          previewClassName="max-h-[260px] overflow-y-auto"
           placeholder="Anote o que motivou o erro, conceitos-chave ou pontos de atenção..."
           className="leading-relaxed"
           {...form.register('observacaoErro')}
@@ -727,11 +733,13 @@ function SimuladoEditSubform({
             {watchedObservacao.trim().length}/5000
           </span>
         </div>
-        <Textarea
+        <MarkdownEditorField
           id="erro-simulado-observacao"
           rows={4}
           autoFocus
           disabled={isSubmitting}
+          previewContent={watchedObservacao}
+          previewClassName="max-h-[260px] overflow-y-auto"
           placeholder="Anote o que resolvia a questão do simulado e os cuidados para futuras provas..."
           className="leading-relaxed"
           {...form.register('observacaoErro')}

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SmartPasteTextarea } from '@/components/markdown/SmartPasteTextarea';
 import {
   Select,
   SelectContent,
@@ -23,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { formatTempoDecorrido } from '@/features/caderno-erros/utils/cadernoErros';
 import { useUpdatePensamentoMutation } from '@/features/simulados/hooks/useSimulados';
 import { parseThoughtTimestampInput } from '@/features/simulados/utils/simulados';
@@ -267,7 +267,7 @@ export function PensamentoEditDialog({
                 {descricao.length}/4000
               </span>
             </div>
-            <Textarea
+            <SmartPasteTextarea
               id="edit-pensamento-descricao"
               rows={4}
               maxLength={4000}

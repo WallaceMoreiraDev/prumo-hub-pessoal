@@ -12,6 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -172,9 +173,7 @@ export function TemaDrawerContent({
                     </div>
                   </div>
 
-                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                    {reflexao.conteudo}
-                  </p>
+                  <MarkdownMathRenderer content={reflexao.conteudo} />
                 </article>
               ))}
             </div>
@@ -271,9 +270,7 @@ export function TemaDrawerContent({
                       </div>
                     </div>
 
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                      {conexao.conteudo}
-                    </p>
+                    <MarkdownMathRenderer content={conexao.conteudo} />
 
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
                       <span className="min-w-0 max-w-full truncate">
