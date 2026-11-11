@@ -28,6 +28,11 @@ export default defineConfig({
               priority: 40,
             },
             {
+              name: 'vendor-markdown',
+              test: /[\\/]node_modules[\\/](react-markdown|remark-gfm|remark-math|remark-breaks|rehype-katex|katex)[\\/]/,
+              priority: 35,
+            },
+            {
               name: 'vendor-query',
               test: /[\\/]node_modules[\\/]@tanstack[\\/]/,
               priority: 30,
