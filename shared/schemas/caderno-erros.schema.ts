@@ -27,6 +27,7 @@ export const ExternalLinkManualErrorSchema = z.object({
     .max(5000, { error: 'A observação deve ter no máximo 5000 caracteres.' })
     .nullable()
     .optional(),
+  lousaId: UuidSchema.nullable().optional(),
 });
 
 export const GenericFullManualErrorSchema = z.object({
@@ -56,6 +57,7 @@ export const GenericFullManualErrorSchema = z.object({
     .max(5000, { error: 'A observação deve ter no máximo 5000 caracteres.' })
     .nullable()
     .optional(),
+  lousaId: UuidSchema.nullable().optional(),
 });
 
 export const CreateManualErrorSchema = z.discriminatedUnion(
@@ -105,6 +107,7 @@ export const UpdateCadernoErroSchema = z
       .min(1, { error: 'Selecione pelo menos um tema.' })
       .max(30, { error: 'Selecione no máximo 30 temas.' })
       .optional(),
+    lousaId: UuidSchema.nullable().optional(),
   })
   .refine(
     (data) =>
@@ -113,7 +116,8 @@ export const UpdateCadernoErroSchema = z
       data.enunciadoCompleto !== undefined ||
       data.linkExterno !== undefined ||
       data.observacaoErro !== undefined ||
-      data.temaIds !== undefined,
+      data.temaIds !== undefined ||
+      data.lousaId !== undefined,
     {
       error: 'Informe ao menos um campo para atualizar o registro do caderno de erros.',
     }

@@ -4,6 +4,7 @@ import type {
   QuestaoResultado,
   ReviewMode,
 } from './enums.types';
+import type { LousaSummaryDto } from './lousas.types';
 import type { SimuladoPensamentoDto } from './simulados.types';
 import type { TemaSummaryDto } from './temas.types';
 
@@ -32,6 +33,8 @@ export interface CadernoErroDto {
   enunciadoCompleto: string | null;
   linkExterno: string | null;
   observacaoErro: string | null;
+  lousaId: string | null;
+  lousa: LousaSummaryDto | null;
   lastReviewedAt: string | null;
   lastReviewMode: ReviewMode | null;
   temas: TemaSummaryDto[];

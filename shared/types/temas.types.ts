@@ -1,4 +1,5 @@
 import type { ReviewMode } from './enums.types';
+import type { LousaSummaryDto } from './lousas.types';
 
 export type TemaSortBy = 'oldest_review' | 'recent_review' | 'name_asc';
 
@@ -37,7 +38,9 @@ export interface ReflexaoDto {
   temaPrincipalId: string;
   temaPrincipal: TemaSummaryDto;
   temasConectados: TemaSummaryDto[];
-  conteudo: string;
+  conteudo: string | null;
+  lousaId: string | null;
+  lousa: LousaSummaryDto | null;
   createdAt: string;
   updatedAt: string;
 }

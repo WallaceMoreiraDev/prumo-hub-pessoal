@@ -55,6 +55,7 @@ export type Database = {
             | null
           last_reviewed_at: string | null
           link_externo: string | null
+          lousa_id: string | null
           observacao_erro: string | null
           origem: Database["public"]["Enums"]["erro_origem_enum"]
           simulado_questao_id: string | null
@@ -73,6 +74,7 @@ export type Database = {
             | null
           last_reviewed_at?: string | null
           link_externo?: string | null
+          lousa_id?: string | null
           observacao_erro?: string | null
           origem: Database["public"]["Enums"]["erro_origem_enum"]
           simulado_questao_id?: string | null
@@ -91,6 +93,7 @@ export type Database = {
             | null
           last_reviewed_at?: string | null
           link_externo?: string | null
+          lousa_id?: string | null
           observacao_erro?: string | null
           origem?: Database["public"]["Enums"]["erro_origem_enum"]
           simulado_questao_id?: string | null
@@ -101,6 +104,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "caderno_erros_lousa_id_fkey"
+            columns: ["lousa_id"]
+            isOneToOne: false
+            referencedRelation: "lousas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "caderno_erros_simulado_questao_id_fkey"
             columns: ["simulado_questao_id"]
             isOneToOne: true
@@ -108,6 +118,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      lousas: {
+        Row: {
+          created_at: string
+          id: string
+          preview_mime_type: string
+          preview_size_bytes: number
+          preview_storage_path: string
+          scene_size_bytes: number
+          scene_storage_path: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          preview_mime_type: string
+          preview_size_bytes: number
+          preview_storage_path: string
+          scene_size_bytes: number
+          scene_storage_path: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          preview_mime_type?: string
+          preview_size_bytes?: number
+          preview_storage_path?: string
+          scene_size_bytes?: number
+          scene_storage_path?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       reflexao_temas_conectados: {
         Row: {
@@ -141,30 +187,40 @@ export type Database = {
       }
       reflexoes: {
         Row: {
-          conteudo: string
+          conteudo: string | null
           created_at: string
           id: string
+          lousa_id: string | null
           tema_principal_id: string
           updated_at: string
           user_id: string
         }
         Insert: {
-          conteudo: string
+          conteudo?: string | null
           created_at?: string
           id?: string
+          lousa_id?: string | null
           tema_principal_id: string
           updated_at?: string
           user_id: string
         }
         Update: {
-          conteudo?: string
+          conteudo?: string | null
           created_at?: string
           id?: string
+          lousa_id?: string | null
           tema_principal_id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "reflexoes_lousa_id_fkey"
+            columns: ["lousa_id"]
+            isOneToOne: false
+            referencedRelation: "lousas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reflexoes_tema_principal_id_fkey"
             columns: ["tema_principal_id"]
