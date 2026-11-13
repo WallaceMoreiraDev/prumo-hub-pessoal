@@ -1,0 +1,31 @@
+/* Corrige portais globais do Excalidraw (ex.: Modal de Ajuda '?' e Command Palette)
+ * montados diretamente em document.body acima da lousa em tela cheia. */
+
+.excalidraw.excalidraw-modal-container {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw;
+  height: 100dvh;
+  pointer-events: auto !important;
+  z-index: 1000 !important;
+}
+
+.excalidraw-modal-container .Modal {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+}
+
+.excalidraw-modal-container .Modal__content {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  position: relative;
+}
+
+.excalidraw-modal-container .Modal__close {
+  z-index: 5;
+  pointer-events: auto;
+  color: var(--icon-fill-color);
+}
