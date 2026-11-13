@@ -22,6 +22,11 @@ export type SimuladoQuestaoRow = Tables<'simulado_questoes'>;
 export type SimuladoRow = Tables<'simulados'>;
 export type { SimuladoPensamentoRow };
 
+import {
+  mapLousaSummaryDto,
+  type LousaRelationRow,
+} from '../lousas/lousas.mapper';
+
 export interface CadernoErroTemaJoinRow {
   tema: TemaSummaryRow | TemaSummaryRow[] | null;
 }
@@ -41,6 +46,7 @@ export interface SimuladoQuestaoMetaJoinRow
 
 export interface CadernoErroWithRelationsRow extends CadernoErroRow {
   caderno_erro_temas: CadernoErroTemaJoinRow[] | null;
+  lousa: LousaRelationRow | LousaRelationRow[] | null;
   simulado_questao:
     | SimuladoQuestaoMetaJoinRow
     | SimuladoQuestaoMetaJoinRow[]
@@ -87,7 +93,8 @@ function mapCadernoErroSimuladoMeta(
 }
 
 export function mapCadernoErroDto(
-  row: CadernoErroWithRelationsRow
+  row: CadernoErroWithRelationsRow,
+  previewSignedUrlByLousaId?: ReadonlyMap<string, string | null>
 ): CadernoErroDto {
   const temasMap = new Map<string, TemaSummaryDto>();
 
@@ -99,6 +106,13 @@ export function mapCadernoErroDto(
   }
 
   const temas = Array.from(temasMap.values()).sort(compareTemaByNome);
+  const lousaRow = unwrapSingleRelation(row.lousa);
+  const lousa = lousaRow
+    ? mapLousaSummaryDto(
+        lousaRow,
+        previewSignedUrlByLousaId?.get(lousaRow.id) ?? null
+      )
+    : null;
 
   return {
     id: row.id,
@@ -111,6 +125,8 @@ export function mapCadernoErroDto(
     enunciadoCompleto: row.enunciado_completo,
     linkExterno: row.link_externo,
     observacaoErro: row.observacao_erro,
+    lousaId: row.lousa_id ?? null,
+    lousa,
     lastReviewedAt: row.last_reviewed_at,
     lastReviewMode: row.last_review_mode,
     temas,

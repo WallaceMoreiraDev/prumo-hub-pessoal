@@ -14,9 +14,13 @@ import type {
   TemaListItemDto,
   TemaSummaryDto,
 } from '@shared/types/temas.types';
+import type { EdgeLogger } from '../../config/logger';
 import type { AppSupabaseClient } from '../../config/supabase';
 import { AppError } from '../../errors/AppError';
 import { buildPaginationMeta } from '../../utils/response';
+import type { LousaRelationRow } from '../lousas/lousas.mapper';
+import type { LousaStoragePaths } from '../lousas/lousas.repository';
+import { lousasService } from '../lousas/lousas.service';
 import {
   compareTemaByNome,
   mapReflexaoDto,
@@ -26,6 +30,19 @@ import {
   unwrapSingleRelation,
 } from './temas.mapper';
 import { temasRepository } from './temas.repository';
+
+function toLousaStoragePaths(
+  lousaRow: Pick<LousaRelationRow, 'id' | 'scene_storage_path' | 'preview_storage_path'> | null
+): LousaStoragePaths | null {
+  if (!lousaRow) {
+    return null;
+  }
+  return {
+    id: lousaRow.id,
+    sceneStoragePath: lousaRow.scene_storage_path,
+    previewStoragePath: lousaRow.preview_storage_path,
+  };
+}
 
 export interface ListTemasResult {
   items: TemaListItemDto[];
@@ -77,7 +94,7 @@ export class TemasService {
       userId,
       pageTemaIds
     );
-    const reflexoes = reflexaoRows.map(mapReflexaoDto);
+    const reflexoes = reflexaoRows.map((row) => mapReflexaoDto(row));
 
     const metricsByTemaId = new Map<
       string,
@@ -146,7 +163,8 @@ export class TemasService {
   public async getTemaById(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<TemaDetalheDto> {
     const temaRow = await temasRepository.findTemaById(supabase, userId, id);
     if (!temaRow) {
@@ -158,7 +176,15 @@ export class TemasService {
       temasRepository.countErrosPorTema(supabase, userId, id),
     ]);
 
-    const reflexoes = reflexaoRows.map(mapReflexaoDto);
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      reflexaoRows.map((row) => unwrapSingleRelation(row.lousa)),
+      logger
+    );
+
+    const reflexoes = reflexaoRows.map((row) =>
+      mapReflexaoDto(row, previewUrlMap)
+    );
     const reflexoesProprias: ReflexaoDto[] = [];
     const conexoes: ReflexaoDto[] = [];
 
@@ -222,12 +248,29 @@ export class TemasService {
   public async deleteTema(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<{ id: string }> {
+    const lousasToClean =
+      await temasRepository.findReflexaoLousasByTemaPrincipal(
+        supabase,
+        userId,
+        id
+      );
+
     const deleted = await temasRepository.deleteTema(supabase, userId, id);
     if (!deleted) {
       throw new AppError(ERROR_CODES.TEMA_NOT_FOUND, 404);
     }
+
+    if (lousasToClean.length > 0) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        lousasToClean,
+        logger
+      );
+    }
+
     return { id: deleted.id };
   }
 
@@ -249,19 +292,28 @@ export class TemasService {
   public async getReflexaoById(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<ReflexaoDto> {
     const row = await temasRepository.findReflexaoById(supabase, userId, id);
     if (!row) {
       throw new AppError(ERROR_CODES.REFLEXAO_NOT_FOUND, 404);
     }
-    return mapReflexaoDto(row);
+
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(row.lousa)],
+      logger
+    );
+
+    return mapReflexaoDto(row, previewUrlMap);
   }
 
   public async createReflexao(
     supabase: AppSupabaseClient,
     userId: string,
-    input: CreateReflexaoInput
+    input: CreateReflexaoInput,
+    logger?: EdgeLogger
   ): Promise<ReflexaoDto> {
     const uniqueConnectedIds = [...new Set(input.temaConectadoIds)];
 
@@ -269,25 +321,50 @@ export class TemasService {
       throw new AppError(ERROR_CODES.REFLEXAO_SELF_CONNECTION, 400);
     }
 
+    if (input.conteudo === null && input.lousaId === null) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+        {
+          path: 'conteudo',
+          message: 'Informe um texto de reflexão ou anexe uma lousa.',
+        },
+      ]);
+    }
+
     await this.ensureAllTemasExist(supabase, userId, [
       input.temaPrincipalId,
       ...uniqueConnectedIds,
     ]);
 
+    if (input.lousaId !== null) {
+      await lousasService.ensureLousaAvailableForLink(
+        supabase,
+        userId,
+        input.lousaId
+      );
+    }
+
     const createdRow = await temasRepository.createReflexao(supabase, userId, {
       temaPrincipalId: input.temaPrincipalId,
       temaConectadoIds: uniqueConnectedIds,
       conteudo: input.conteudo,
+      lousaId: input.lousaId,
     });
 
-    return mapReflexaoDto(createdRow);
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(createdRow.lousa)],
+      logger
+    );
+
+    return mapReflexaoDto(createdRow, previewUrlMap);
   }
 
   public async updateReflexao(
     supabase: AppSupabaseClient,
     userId: string,
     id: string,
-    input: UpdateReflexaoInput
+    input: UpdateReflexaoInput,
+    logger?: EdgeLogger
   ): Promise<ReflexaoDto> {
     const existingRow = await temasRepository.findReflexaoById(
       supabase,
@@ -313,10 +390,23 @@ export class TemasService {
       input.temaConectadoIds !== undefined
         ? [...new Set(input.temaConectadoIds)]
         : currentConnectedIds;
-    const nextConteudo = input.conteudo ?? existingRow.conteudo;
+    const nextConteudo =
+      input.conteudo !== undefined ? input.conteudo : existingRow.conteudo;
+    const nextLousaId =
+      input.lousaId !== undefined ? input.lousaId : existingRow.lousa_id;
 
     if (nextConnectedIds.includes(nextTemaPrincipalId)) {
       throw new AppError(ERROR_CODES.REFLEXAO_SELF_CONNECTION, 400);
+    }
+
+    if (nextConteudo === null && nextLousaId === null) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+        {
+          path: 'conteudo',
+          message:
+            'A reflexão deve manter ao menos um conteúdo em texto ou uma lousa.',
+        },
+      ]);
     }
 
     if (
@@ -329,6 +419,14 @@ export class TemasService {
       ]);
     }
 
+    if (nextLousaId !== null && nextLousaId !== existingRow.lousa_id) {
+      await lousasService.ensureLousaAvailableForLink(
+        supabase,
+        userId,
+        nextLousaId
+      );
+    }
+
     const nextConnectedSet = new Set(nextConnectedIds);
     const toAddConnectedIds = nextConnectedIds.filter(
       (temaId) => !currentConnectedIdSet.has(temaId)
@@ -337,24 +435,56 @@ export class TemasService {
       (temaId) => !nextConnectedSet.has(temaId)
     );
 
+    const previousLousaPaths = toLousaStoragePaths(
+      unwrapSingleRelation(existingRow.lousa)
+    );
+
     const updatedRow = await temasRepository.updateReflexao(supabase, userId, {
       id,
       previousTemaPrincipalId: existingRow.tema_principal_id,
       previousConteudo: existingRow.conteudo,
+      previousLousaId: existingRow.lousa_id,
       nextTemaPrincipalId,
       nextConteudo,
+      nextLousaId,
       toAddConnectedIds,
       toRemoveConnectedIds,
     });
 
-    return mapReflexaoDto(updatedRow);
+    if (previousLousaPaths && nextLousaId !== existingRow.lousa_id) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        [previousLousaPaths],
+        logger
+      );
+    }
+
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(updatedRow.lousa)],
+      logger
+    );
+
+    return mapReflexaoDto(updatedRow, previewUrlMap);
   }
 
   public async deleteReflexao(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<{ id: string }> {
+    const existing = await temasRepository.findReflexaoById(
+      supabase,
+      userId,
+      id
+    );
+    if (!existing) {
+      throw new AppError(ERROR_CODES.REFLEXAO_NOT_FOUND, 404);
+    }
+
+    const lousaPaths = toLousaStoragePaths(unwrapSingleRelation(existing.lousa));
+
     const deleted = await temasRepository.deleteReflexao(
       supabase,
       userId,
@@ -363,6 +493,15 @@ export class TemasService {
     if (!deleted) {
       throw new AppError(ERROR_CODES.REFLEXAO_NOT_FOUND, 404);
     }
+
+    if (lousaPaths) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        [lousaPaths],
+        logger
+      );
+    }
+
     return { id: deleted.id };
   }
 }

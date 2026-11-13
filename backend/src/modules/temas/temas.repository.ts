@@ -7,9 +7,15 @@ import {
   mapSupabaseError,
   throwIfSupabaseError,
 } from '../../utils/supabaseErrorMapper';
-import type {
-  ReflexaoWithRelationsRow,
-  TemaRow,
+import {
+  LOUSA_RELATION_SELECT,
+  type LousaRelationRow,
+} from '../lousas/lousas.mapper';
+import type { LousaStoragePaths } from '../lousas/lousas.repository';
+import {
+  unwrapSingleRelation,
+  type ReflexaoWithRelationsRow,
+  type TemaRow,
 } from './temas.mapper';
 
 const TEMA_SELECT =
@@ -20,8 +26,12 @@ const REFLEXAO_SELECT = `
   user_id,
   tema_principal_id,
   conteudo,
+  lousa_id,
   created_at,
   updated_at,
+  lousa:lousas!reflexoes_lousa_id_fkey(
+    ${LOUSA_RELATION_SELECT}
+  ),
   tema_principal:temas!reflexoes_tema_principal_id_fkey(
     id,
     nome,
@@ -65,15 +75,18 @@ export interface ErrosCountPorTemaResult {
 export interface CreateReflexaoRecordParams {
   temaPrincipalId: string;
   temaConectadoIds: readonly string[];
-  conteudo: string;
+  conteudo: string | null;
+  lousaId: string | null;
 }
 
 export interface UpdateReflexaoRecordParams {
   id: string;
   previousTemaPrincipalId: string;
-  previousConteudo: string;
+  previousConteudo: string | null;
+  previousLousaId: string | null;
   nextTemaPrincipalId: string;
-  nextConteudo: string;
+  nextConteudo: string | null;
+  nextLousaId: string | null;
   toAddConnectedIds: readonly string[];
   toRemoveConnectedIds: readonly string[];
 }
@@ -354,6 +367,42 @@ export class TemasRepository {
     return data;
   }
 
+  public async findReflexaoLousasByTemaPrincipal(
+    supabase: AppSupabaseClient,
+    userId: string,
+    temaPrincipalId: string
+  ): Promise<LousaStoragePaths[]> {
+    const { data, error } = await supabase
+      .from('reflexoes')
+      .select(
+        `lousa:lousas!reflexoes_lousa_id_fkey(id, scene_storage_path, preview_storage_path)`
+      )
+      .eq('user_id', userId)
+      .eq('tema_principal_id', temaPrincipalId)
+      .not('lousa_id', 'is', null);
+
+    throwIfSupabaseError(error);
+
+    const results: LousaStoragePaths[] = [];
+    for (const row of (data ?? []) as Array<{
+      lousa:
+        | Pick<LousaRelationRow, 'id' | 'scene_storage_path' | 'preview_storage_path'>
+        | Pick<LousaRelationRow, 'id' | 'scene_storage_path' | 'preview_storage_path'>[]
+        | null;
+    }>) {
+      const lousaRow = unwrapSingleRelation(row.lousa);
+      if (lousaRow) {
+        results.push({
+          id: lousaRow.id,
+          sceneStoragePath: lousaRow.scene_storage_path,
+          previewStoragePath: lousaRow.preview_storage_path,
+        });
+      }
+    }
+
+    return results;
+  }
+
   public async registrarPraticaRpc(
     supabase: AppSupabaseClient,
     userId: string,
@@ -437,6 +486,7 @@ export class TemasRepository {
         user_id: userId,
         tema_principal_id: params.temaPrincipalId,
         conteudo: params.conteudo,
+        lousa_id: params.lousaId,
       })
       .select('id')
       .single();
@@ -485,30 +535,15 @@ export class TemasRepository {
   ): Promise<ReflexaoWithRelationsRow> {
     const {
       id,
-      previousTemaPrincipalId,
-      previousConteudo,
       nextTemaPrincipalId,
       nextConteudo,
+      nextLousaId,
       toAddConnectedIds,
       toRemoveConnectedIds,
     } = params;
 
-    const { data: updated, error: updateError } = await supabase
-      .from('reflexoes')
-      .update({
-        tema_principal_id: nextTemaPrincipalId,
-        conteudo: nextConteudo,
-      })
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select('id')
-      .maybeSingle();
-
-    throwIfSupabaseError(updateError, ERROR_CODES.REFLEXAO_NOT_FOUND);
-    if (!updated) {
-      throw new AppError(ERROR_CODES.REFLEXAO_NOT_FOUND, 404);
-    }
-
+    // Atualizamos os vínculos antes do update da reflexão para não disparar o trigger
+    // cleanup_orphan_lousa prematuramente caso uma mutação de vínculo falhe.
     if (toAddConnectedIds.length > 0) {
       const linkRows = toAddConnectedIds.map((temaConectadoId) => ({
         reflexao_id: id,
@@ -520,14 +555,6 @@ export class TemasRepository {
         .insert(linkRows);
 
       if (addError !== null) {
-        await supabase
-          .from('reflexoes')
-          .update({
-            tema_principal_id: previousTemaPrincipalId,
-            conteudo: previousConteudo,
-          })
-          .eq('id', id)
-          .eq('user_id', userId);
         throw mapSupabaseError(addError, ERROR_CODES.TEMA_NOT_FOUND);
       }
     }
@@ -548,17 +575,41 @@ export class TemasRepository {
             .in('tema_conectado_id', [...toAddConnectedIds]);
         }
 
-        await supabase
-          .from('reflexoes')
-          .update({
-            tema_principal_id: previousTemaPrincipalId,
-            conteudo: previousConteudo,
-          })
-          .eq('id', id)
-          .eq('user_id', userId);
-
         throw mapSupabaseError(removeError, ERROR_CODES.REFLEXAO_NOT_FOUND);
       }
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('reflexoes')
+      .update({
+        tema_principal_id: nextTemaPrincipalId,
+        conteudo: nextConteudo,
+        lousa_id: nextLousaId,
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+
+    if (updateError !== null || !updated) {
+      if (toRemoveConnectedIds.length > 0) {
+        await supabase.from('reflexao_temas_conectados').insert(
+          toRemoveConnectedIds.map((temaConectadoId) => ({
+            reflexao_id: id,
+            tema_conectado_id: temaConectadoId,
+          }))
+        );
+      }
+      if (toAddConnectedIds.length > 0) {
+        await supabase
+          .from('reflexao_temas_conectados')
+          .delete()
+          .eq('reflexao_id', id)
+          .in('tema_conectado_id', [...toAddConnectedIds]);
+      }
+
+      throwIfSupabaseError(updateError, ERROR_CODES.REFLEXAO_NOT_FOUND);
+      throw new AppError(ERROR_CODES.REFLEXAO_NOT_FOUND, 404);
     }
 
     const updatedRow = await this.findReflexaoById(supabase, userId, id);

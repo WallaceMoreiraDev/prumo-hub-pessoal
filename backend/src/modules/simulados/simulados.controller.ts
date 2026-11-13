@@ -290,13 +290,15 @@ export class SimuladosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id, questaoId } = c.get('validParams');
 
     const deleted = await simuladosService.removeQuestao(
       supabase,
       user.id,
       id,
-      questaoId
+      questaoId,
+      logger
     );
     return jsonSuccess(c, deleted);
   }
@@ -309,6 +311,7 @@ export class SimuladosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id, questaoId } = c.get('validParams');
     const body = c.get('validBody');
 
@@ -317,7 +320,8 @@ export class SimuladosController {
       user.id,
       id,
       questaoId,
-      body
+      body,
+      logger
     );
     return jsonSuccess(c, updated);
   }

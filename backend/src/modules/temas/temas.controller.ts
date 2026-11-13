@@ -31,9 +31,15 @@ export class TemasController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const temaDetalhe = await temasService.getTemaById(supabase, user.id, id);
+    const temaDetalhe = await temasService.getTemaById(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, temaDetalhe);
   }
 
@@ -68,9 +74,15 @@ export class TemasController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const deleted = await temasService.deleteTema(supabase, user.id, id);
+    const deleted = await temasService.deleteTema(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, deleted);
   }
 

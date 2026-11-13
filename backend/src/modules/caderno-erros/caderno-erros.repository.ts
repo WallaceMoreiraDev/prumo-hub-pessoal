@@ -11,6 +11,7 @@ import {
   mapSupabaseError,
   throwIfSupabaseError,
 } from '../../utils/supabaseErrorMapper';
+import { LOUSA_RELATION_SELECT } from '../lousas/lousas.mapper';
 import type { CadernoErroWithRelationsRow } from './caderno-erros.mapper';
 
 const CADERNO_ERRO_SELECT = `
@@ -24,10 +25,14 @@ const CADERNO_ERRO_SELECT = `
   enunciado_completo,
   link_externo,
   observacao_erro,
+  lousa_id,
   last_reviewed_at,
   last_review_mode,
   created_at,
   updated_at,
+  lousa:lousas!caderno_erros_lousa_id_fkey(
+    ${LOUSA_RELATION_SELECT}
+  ),
   caderno_erro_temas(
     tema:temas!caderno_erro_temas_tema_id_fkey(
       id,
@@ -106,6 +111,7 @@ export interface CreateCadernoErroRecordParams {
   enunciadoCompleto: string | null;
   linkExterno: string | null;
   observacaoErro: string | null;
+  lousaId: string | null;
   temaIds: readonly string[];
 }
 
@@ -115,6 +121,7 @@ export interface CadernoErroEditableColumns {
   enunciado_completo: string | null;
   link_externo: string | null;
   observacao_erro: string | null;
+  lousa_id: string | null;
 }
 
 export interface UpdateCadernoErroRecordParams {
@@ -367,6 +374,7 @@ export class CadernoErrosRepository {
         enunciado_completo: params.enunciadoCompleto,
         link_externo: params.linkExterno,
         observacao_erro: params.observacaoErro,
+        lousa_id: params.lousaId,
         last_reviewed_at: null,
         last_review_mode: null,
       })
@@ -413,25 +421,13 @@ export class CadernoErrosRepository {
   ): Promise<CadernoErroWithRelationsRow> {
     const {
       id,
-      previousColumns,
       nextColumns,
       toAddTemaIds,
       toRemoveTemaIds,
     } = params;
 
-    const { data: updated, error: updateError } = await supabase
-      .from('caderno_erros')
-      .update(nextColumns)
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select('id')
-      .maybeSingle();
-
-    throwIfSupabaseError(updateError, ERROR_CODES.CADERNO_ERRO_NOT_FOUND);
-    if (!updated) {
-      throw new AppError(ERROR_CODES.CADERNO_ERRO_NOT_FOUND, 404);
-    }
-
+    // Aplicamos alterações de temas antes do update em caderno_erros para evitar que o
+    // trigger cleanup_orphan_lousa remova a lousa anterior se a etapa de temas falhar.
     if (toAddTemaIds.length > 0) {
       const linkRows = toAddTemaIds.map((temaId) => ({
         caderno_erro_id: id,
@@ -443,11 +439,6 @@ export class CadernoErrosRepository {
         .insert(linkRows);
 
       if (addError !== null) {
-        await supabase
-          .from('caderno_erros')
-          .update(previousColumns)
-          .eq('id', id)
-          .eq('user_id', userId);
         throw mapSupabaseError(addError, ERROR_CODES.TEMA_NOT_FOUND);
       }
     }
@@ -468,14 +459,37 @@ export class CadernoErrosRepository {
             .in('tema_id', [...toAddTemaIds]);
         }
 
-        await supabase
-          .from('caderno_erros')
-          .update(previousColumns)
-          .eq('id', id)
-          .eq('user_id', userId);
-
         throw mapSupabaseError(removeError, ERROR_CODES.CADERNO_ERRO_NOT_FOUND);
       }
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('caderno_erros')
+      .update(nextColumns)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+
+    if (updateError !== null || !updated) {
+      if (toRemoveTemaIds.length > 0) {
+        await supabase.from('caderno_erro_temas').insert(
+          toRemoveTemaIds.map((temaId) => ({
+            caderno_erro_id: id,
+            tema_id: temaId,
+          }))
+        );
+      }
+      if (toAddTemaIds.length > 0) {
+        await supabase
+          .from('caderno_erro_temas')
+          .delete()
+          .eq('caderno_erro_id', id)
+          .in('tema_id', [...toAddTemaIds]);
+      }
+
+      throwIfSupabaseError(updateError, ERROR_CODES.CADERNO_ERRO_NOT_FOUND);
+      throw new AppError(ERROR_CODES.CADERNO_ERRO_NOT_FOUND, 404);
     }
 
     const updatedRow = await this.findById(supabase, userId, id);
