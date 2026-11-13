@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import {
 } from '@shared/schemas/caderno-erros.schema';
 import type { CadernoErroDto } from '@shared/types/caderno-erros.types';
 import type { ManualErrorOrigin } from '@shared/types/enums.types';
+import type { LousaDto, LousaSummaryDto } from '@shared/types/lousas.types';
 import type { TemaSummaryDto } from '@shared/types/temas.types';
 import { ExternalLink, FileText, Loader2, Lock, Timer } from 'lucide-react';
 import {
@@ -45,6 +47,9 @@ import {
   QUESTAO_RESULTADO_LABELS,
   buildUpdateCadernoErroPayload,
 } from '@/features/caderno-erros/utils/cadernoErros';
+import { lousasApi } from '@/features/lousas/api/lousasApi';
+import { LousaAttachmentField } from '@/features/lousas/components/LousaAttachmentField';
+import { LousaCanvasModal } from '@/features/lousas/components/LousaCanvasModal';
 import { TemaSelector } from '@/features/temas-revisao/components/TemaSelector';
 import { getValidationFieldErrors } from '@/lib/errorMessages';
 import { cn } from '@/lib/utils';
@@ -58,6 +63,7 @@ type GenericFullFormOutput = z.infer<typeof GenericFullManualErrorSchema>;
 const SimuladoEditFormSchema = z.object({
   temaIds: ExternalLinkManualErrorSchema.shape.temaIds,
   observacaoErro: ExternalLinkManualErrorSchema.shape.observacaoErro,
+  lousaId: ExternalLinkManualErrorSchema.shape.lousaId,
 });
 
 type SimuladoEditFormInput = z.input<typeof SimuladoEditFormSchema>;
@@ -71,6 +77,8 @@ interface ManualDraftSnapshot {
   observacaoErro: string;
   temaIds: string[];
   selectedTemas: TemaSummaryDto[];
+  lousaId: string | null;
+  lousaPreview: LousaSummaryDto | null;
 }
 
 export interface CadernoErroFormDialogProps {
@@ -80,9 +88,24 @@ export interface CadernoErroFormDialogProps {
   defaultTema?: TemaSummaryDto | null;
 }
 
-function createInitialDraft(
+function createDraftFromSource(
+  editingErro: CadernoErroDto | null | undefined,
   defaultTema: TemaSummaryDto | null | undefined
 ): ManualDraftSnapshot {
+  if (editingErro) {
+    return {
+      codigoReferencia: editingErro.codigoReferencia ?? '',
+      titulo: editingErro.titulo ?? '',
+      enunciadoCompleto: editingErro.enunciadoCompleto ?? '',
+      linkExterno: editingErro.linkExterno ?? '',
+      observacaoErro: editingErro.observacaoErro ?? '',
+      temaIds: editingErro.temas.map((tema) => tema.id),
+      selectedTemas: editingErro.temas,
+      lousaId: editingErro.lousaId ?? null,
+      lousaPreview: editingErro.lousa ?? null,
+    };
+  }
+
   return {
     codigoReferencia: '',
     titulo: '',
@@ -91,6 +114,8 @@ function createInitialDraft(
     observacaoErro: '',
     temaIds: defaultTema ? [defaultTema.id] : [],
     selectedTemas: defaultTema ? [defaultTema] : [],
+    lousaId: null,
+    lousaPreview: null,
   };
 }
 
@@ -113,68 +138,61 @@ function applyServerFieldErrors<TFieldValues extends FieldValues>(
 }
 
 interface ExternalLinkSubformProps {
-  editingErro: CadernoErroDto | null;
+  isEditing: boolean;
   draft: ManualDraftSnapshot;
   snapshotGetterRef: MutableRefObject<(() => Partial<ManualDraftSnapshot>) | null>;
   isSubmitting: boolean;
+  onRequestOpenLousa: () => void;
+  onRemoveLousa: (lousaId: string | null) => void;
   onCancel: () => void;
   onSubmitExternalLink: (values: ExternalLinkFormOutput) => Promise<void>;
 }
 
 function ExternalLinkSubform({
-  editingErro,
+  isEditing,
   draft,
   snapshotGetterRef,
   isSubmitting,
+  onRequestOpenLousa,
+  onRemoveLousa,
   onCancel,
   onSubmitExternalLink,
 }: ExternalLinkSubformProps) {
-  const selectedTemasRef = useRef<TemaSummaryDto[]>(
-    editingErro ? editingErro.temas : draft.selectedTemas
-  );
-  const prevEditingErroRef = useRef<CadernoErroDto | null>(editingErro);
+  const selectedTemasRef = useRef<TemaSummaryDto[]>(draft.selectedTemas);
   const prevDraftRef = useRef<ManualDraftSnapshot>(draft);
 
   const form = useForm<ExternalLinkFormInput, unknown, ExternalLinkFormOutput>({
     resolver: zodResolver(ExternalLinkManualErrorSchema),
     defaultValues: {
       origem: 'EXTERNAL_LINK',
-      codigoReferencia: editingErro?.codigoReferencia ?? draft.codigoReferencia,
-      linkExterno: editingErro?.linkExterno ?? draft.linkExterno,
-      titulo: editingErro?.titulo ?? draft.titulo,
-      temaIds: editingErro
-        ? editingErro.temas.map((tema) => tema.id)
-        : draft.temaIds,
-      observacaoErro: editingErro?.observacaoErro ?? draft.observacaoErro,
+      codigoReferencia: draft.codigoReferencia,
+      linkExterno: draft.linkExterno,
+      titulo: draft.titulo,
+      temaIds: draft.temaIds,
+      observacaoErro: draft.observacaoErro,
+      lousaId: draft.lousaId,
     },
   });
 
   const { reset } = form;
 
   useEffect(() => {
-    if (
-      prevEditingErroRef.current === editingErro &&
-      prevDraftRef.current === draft
-    ) {
+    if (prevDraftRef.current === draft) {
       return;
     }
 
-    prevEditingErroRef.current = editingErro;
     prevDraftRef.current = draft;
-
-    const initialTemas = editingErro ? editingErro.temas : draft.selectedTemas;
-    selectedTemasRef.current = initialTemas;
+    selectedTemasRef.current = draft.selectedTemas;
     reset({
       origem: 'EXTERNAL_LINK',
-      codigoReferencia: editingErro?.codigoReferencia ?? draft.codigoReferencia,
-      linkExterno: editingErro?.linkExterno ?? draft.linkExterno,
-      titulo: editingErro?.titulo ?? draft.titulo,
-      temaIds: editingErro
-        ? editingErro.temas.map((tema) => tema.id)
-        : draft.temaIds,
-      observacaoErro: editingErro?.observacaoErro ?? draft.observacaoErro,
+      codigoReferencia: draft.codigoReferencia,
+      linkExterno: draft.linkExterno,
+      titulo: draft.titulo,
+      temaIds: draft.temaIds,
+      observacaoErro: draft.observacaoErro,
+      lousaId: draft.lousaId,
     });
-  }, [editingErro, draft, reset]);
+  }, [draft, reset]);
 
   useEffect(() => {
     snapshotGetterRef.current = () => {
@@ -186,16 +204,19 @@ function ExternalLinkSubform({
         temaIds: current.temaIds ?? [],
         observacaoErro: current.observacaoErro ?? '',
         selectedTemas: selectedTemasRef.current,
+        lousaId: current.lousaId ?? null,
+        lousaPreview: draft.lousaPreview,
       };
     };
 
     return () => {
       snapshotGetterRef.current = null;
     };
-  }, [form, snapshotGetterRef]);
+  }, [form, snapshotGetterRef, draft.lousaPreview]);
 
   const watchedTemaIds = form.watch('temaIds') ?? [];
   const watchedObservacao = form.watch('observacaoErro') ?? '';
+  const watchedLousaId = form.watch('lousaId') ?? null;
 
   async function handleFormSubmit(
     values: ExternalLinkFormOutput
@@ -211,6 +232,7 @@ function ExternalLinkSubform({
           'titulo',
           'temaIds',
           'observacaoErro',
+          'lousaId',
         ],
         form.setError
       );
@@ -230,7 +252,7 @@ function ExternalLinkSubform({
           </Label>
           <Input
             id="erro-codigo-referencia"
-            autoFocus={!editingErro}
+            autoFocus={!isEditing}
             disabled={isSubmitting}
             placeholder="Ex.: CF 1900C, 222A, ENEM 2023 Q138"
             className="font-mono"
@@ -286,9 +308,7 @@ function ExternalLinkSubform({
         <TemaSelector
           mode="multiple"
           value={watchedTemaIds}
-          initialSelectedTemas={
-            editingErro ? editingErro.temas : draft.selectedTemas
-          }
+          initialSelectedTemas={draft.selectedTemas}
           disabled={isSubmitting}
           placeholder="Buscar tema existente ou criar novo..."
           onChange={(nextIds, nextSummaries) => {
@@ -334,6 +354,22 @@ function ExternalLinkSubform({
         ) : null}
       </div>
 
+      <LousaAttachmentField
+        label="Lousa do erro (opcional)"
+        lousaId={watchedLousaId}
+        lousaPreview={draft.lousaPreview}
+        disabled={isSubmitting}
+        errorMessage={form.formState.errors.lousaId?.message}
+        onRequestOpenEditor={onRequestOpenLousa}
+        onRemoveLousa={() => {
+          onRemoveLousa(watchedLousaId);
+          form.setValue('lousaId', null, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }}
+      />
+
       <DialogFooter>
         <Button
           type="button"
@@ -350,7 +386,7 @@ function ExternalLinkSubform({
               <span>Salvando...</span>
             </>
           ) : (
-            <span>{editingErro ? 'Salvar alterações' : 'Registrar erro'}</span>
+            <span>{isEditing ? 'Salvar alterações' : 'Registrar erro'}</span>
           )}
         </Button>
       </DialogFooter>
@@ -359,70 +395,61 @@ function ExternalLinkSubform({
 }
 
 interface GenericFullSubformProps {
-  editingErro: CadernoErroDto | null;
+  isEditing: boolean;
   draft: ManualDraftSnapshot;
   snapshotGetterRef: MutableRefObject<(() => Partial<ManualDraftSnapshot>) | null>;
   isSubmitting: boolean;
+  onRequestOpenLousa: () => void;
+  onRemoveLousa: (lousaId: string | null) => void;
   onCancel: () => void;
   onSubmitGenericFull: (values: GenericFullFormOutput) => Promise<void>;
 }
 
 function GenericFullSubform({
-  editingErro,
+  isEditing,
   draft,
   snapshotGetterRef,
   isSubmitting,
+  onRequestOpenLousa,
+  onRemoveLousa,
   onCancel,
   onSubmitGenericFull,
 }: GenericFullSubformProps) {
-  const selectedTemasRef = useRef<TemaSummaryDto[]>(
-    editingErro ? editingErro.temas : draft.selectedTemas
-  );
-  const prevEditingErroRef = useRef<CadernoErroDto | null>(editingErro);
+  const selectedTemasRef = useRef<TemaSummaryDto[]>(draft.selectedTemas);
   const prevDraftRef = useRef<ManualDraftSnapshot>(draft);
 
   const form = useForm<GenericFullFormInput, unknown, GenericFullFormOutput>({
     resolver: zodResolver(GenericFullManualErrorSchema),
     defaultValues: {
       origem: 'GENERIC_FULL',
-      titulo: editingErro?.titulo ?? draft.titulo,
-      enunciadoCompleto:
-        editingErro?.enunciadoCompleto ?? draft.enunciadoCompleto,
-      linkExterno: editingErro?.linkExterno ?? draft.linkExterno,
-      temaIds: editingErro
-        ? editingErro.temas.map((tema) => tema.id)
-        : draft.temaIds,
-      observacaoErro: editingErro?.observacaoErro ?? draft.observacaoErro,
+      titulo: draft.titulo,
+      enunciadoCompleto: draft.enunciadoCompleto,
+      linkExterno: draft.linkExterno,
+      temaIds: draft.temaIds,
+      observacaoErro: draft.observacaoErro,
+      lousaId: draft.lousaId,
     },
   });
 
   const { reset } = form;
 
   useEffect(() => {
-    if (
-      prevEditingErroRef.current === editingErro &&
-      prevDraftRef.current === draft
-    ) {
+    if (prevDraftRef.current === draft) {
       return;
     }
 
-    prevEditingErroRef.current = editingErro;
     prevDraftRef.current = draft;
-
-    const initialTemas = editingErro ? editingErro.temas : draft.selectedTemas;
-    selectedTemasRef.current = initialTemas;
+    selectedTemasRef.current = draft.selectedTemas;
     reset({
       origem: 'GENERIC_FULL',
-      titulo: editingErro?.titulo ?? draft.titulo,
-      enunciadoCompleto:
-        editingErro?.enunciadoCompleto ?? draft.enunciadoCompleto,
-      linkExterno: editingErro?.linkExterno ?? draft.linkExterno,
-      temaIds: editingErro
-        ? editingErro.temas.map((tema) => tema.id)
-        : draft.temaIds,
-      observacaoErro: editingErro?.observacaoErro ?? draft.observacaoErro,
+      titulo: draft.titulo,
+      enunciadoCompleto: draft.enunciadoCompleto,
+      linkExterno: draft.linkExterno,
+      temaIds: draft.temaIds,
+      observacaoErro: draft.observacaoErro,
+      lousaId: draft.lousaId,
     });
-  }, [editingErro, draft, reset]);
+  }, [draft, reset]);
 
   useEffect(() => {
     snapshotGetterRef.current = () => {
@@ -434,17 +461,20 @@ function GenericFullSubform({
         temaIds: current.temaIds ?? [],
         observacaoErro: current.observacaoErro ?? '',
         selectedTemas: selectedTemasRef.current,
+        lousaId: current.lousaId ?? null,
+        lousaPreview: draft.lousaPreview,
       };
     };
 
     return () => {
       snapshotGetterRef.current = null;
     };
-  }, [form, snapshotGetterRef]);
+  }, [form, snapshotGetterRef, draft.lousaPreview]);
 
   const watchedTemaIds = form.watch('temaIds') ?? [];
   const watchedEnunciado = form.watch('enunciadoCompleto') ?? '';
   const watchedObservacao = form.watch('observacaoErro') ?? '';
+  const watchedLousaId = form.watch('lousaId') ?? null;
 
   async function handleFormSubmit(values: GenericFullFormOutput): Promise<void> {
     try {
@@ -458,6 +488,7 @@ function GenericFullSubform({
           'linkExterno',
           'temaIds',
           'observacaoErro',
+          'lousaId',
         ],
         form.setError
       );
@@ -476,7 +507,7 @@ function GenericFullSubform({
         </Label>
         <Input
           id="erro-generic-titulo"
-          autoFocus={!editingErro}
+          autoFocus={!isEditing}
           disabled={isSubmitting}
           placeholder="Ex.: Ponte de Wheatstone em equilíbrio"
           {...form.register('titulo')}
@@ -537,9 +568,7 @@ function GenericFullSubform({
         <TemaSelector
           mode="multiple"
           value={watchedTemaIds}
-          initialSelectedTemas={
-            editingErro ? editingErro.temas : draft.selectedTemas
-          }
+          initialSelectedTemas={draft.selectedTemas}
           disabled={isSubmitting}
           placeholder="Buscar tema existente ou criar novo..."
           onChange={(nextIds, nextSummaries) => {
@@ -585,6 +614,22 @@ function GenericFullSubform({
         ) : null}
       </div>
 
+      <LousaAttachmentField
+        label="Lousa do erro (opcional)"
+        lousaId={watchedLousaId}
+        lousaPreview={draft.lousaPreview}
+        disabled={isSubmitting}
+        errorMessage={form.formState.errors.lousaId?.message}
+        onRequestOpenEditor={onRequestOpenLousa}
+        onRemoveLousa={() => {
+          onRemoveLousa(watchedLousaId);
+          form.setValue('lousaId', null, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }}
+      />
+
       <DialogFooter>
         <Button
           type="button"
@@ -601,7 +646,7 @@ function GenericFullSubform({
               <span>Salvando...</span>
             </>
           ) : (
-            <span>{editingErro ? 'Salvar alterações' : 'Registrar erro'}</span>
+            <span>{isEditing ? 'Salvar alterações' : 'Registrar erro'}</span>
           )}
         </Button>
       </DialogFooter>
@@ -611,43 +656,73 @@ function GenericFullSubform({
 
 interface SimuladoEditSubformProps {
   editingErro: CadernoErroDto;
+  draft: ManualDraftSnapshot;
+  snapshotGetterRef: MutableRefObject<(() => Partial<ManualDraftSnapshot>) | null>;
   isSubmitting: boolean;
+  onRequestOpenLousa: () => void;
+  onRemoveLousa: (lousaId: string | null) => void;
   onCancel: () => void;
   onSubmitSimuladoEdit: (values: SimuladoEditFormOutput) => Promise<void>;
 }
 
 function SimuladoEditSubform({
   editingErro,
+  draft,
+  snapshotGetterRef,
   isSubmitting,
+  onRequestOpenLousa,
+  onRemoveLousa,
   onCancel,
   onSubmitSimuladoEdit,
 }: SimuladoEditSubformProps) {
-  const prevEditingErroRef = useRef<CadernoErroDto>(editingErro);
+  const selectedTemasRef = useRef<TemaSummaryDto[]>(draft.selectedTemas);
+  const prevDraftRef = useRef<ManualDraftSnapshot>(draft);
 
   const form = useForm<SimuladoEditFormInput, unknown, SimuladoEditFormOutput>({
     resolver: zodResolver(SimuladoEditFormSchema),
     defaultValues: {
-      temaIds: editingErro.temas.map((tema) => tema.id),
-      observacaoErro: editingErro.observacaoErro ?? '',
+      temaIds: draft.temaIds,
+      observacaoErro: draft.observacaoErro,
+      lousaId: draft.lousaId,
     },
   });
 
   const { reset } = form;
 
   useEffect(() => {
-    if (prevEditingErroRef.current === editingErro) {
+    if (prevDraftRef.current === draft) {
       return;
     }
 
-    prevEditingErroRef.current = editingErro;
+    prevDraftRef.current = draft;
+    selectedTemasRef.current = draft.selectedTemas;
     reset({
-      temaIds: editingErro.temas.map((tema) => tema.id),
-      observacaoErro: editingErro.observacaoErro ?? '',
+      temaIds: draft.temaIds,
+      observacaoErro: draft.observacaoErro,
+      lousaId: draft.lousaId,
     });
-  }, [editingErro, reset]);
+  }, [draft, reset]);
+
+  useEffect(() => {
+    snapshotGetterRef.current = () => {
+      const current = form.getValues();
+      return {
+        temaIds: current.temaIds ?? [],
+        observacaoErro: current.observacaoErro ?? '',
+        selectedTemas: selectedTemasRef.current,
+        lousaId: current.lousaId ?? null,
+        lousaPreview: draft.lousaPreview,
+      };
+    };
+
+    return () => {
+      snapshotGetterRef.current = null;
+    };
+  }, [form, snapshotGetterRef, draft.lousaPreview]);
 
   const watchedTemaIds = form.watch('temaIds') ?? [];
   const watchedObservacao = form.watch('observacaoErro') ?? '';
+  const watchedLousaId = form.watch('lousaId') ?? null;
 
   async function handleFormSubmit(
     values: SimuladoEditFormOutput
@@ -657,7 +732,7 @@ function SimuladoEditSubform({
     } catch (error) {
       applyServerFieldErrors(
         error,
-        ['temaIds', 'observacaoErro'],
+        ['temaIds', 'observacaoErro', 'lousaId'],
         form.setError
       );
     }
@@ -697,8 +772,8 @@ function SimuladoEditSubform({
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Erros vindos de simulado permitem editar apenas os temas vinculados e
-          a observação pós-revisão.
+          Erros vindos de simulado permitem editar os temas vinculados, a
+          observação pós-revisão e a lousa de rascunho.
         </p>
       </div>
 
@@ -707,10 +782,13 @@ function SimuladoEditSubform({
         <TemaSelector
           mode="multiple"
           value={watchedTemaIds}
-          initialSelectedTemas={editingErro.temas}
+          initialSelectedTemas={draft.selectedTemas}
           disabled={isSubmitting}
           placeholder="Buscar tema existente ou criar novo..."
-          onChange={(nextIds) => {
+          onChange={(nextIds, nextSummaries) => {
+            if (nextSummaries) {
+              selectedTemasRef.current = nextSummaries;
+            }
             form.setValue('temaIds', nextIds, {
               shouldDirty: true,
               shouldValidate: true,
@@ -751,6 +829,22 @@ function SimuladoEditSubform({
         ) : null}
       </div>
 
+      <LousaAttachmentField
+        label="Lousa do erro (opcional)"
+        lousaId={watchedLousaId}
+        lousaPreview={draft.lousaPreview}
+        disabled={isSubmitting}
+        errorMessage={form.formState.errors.lousaId?.message}
+        onRequestOpenEditor={onRequestOpenLousa}
+        onRemoveLousa={() => {
+          onRemoveLousa(watchedLousaId);
+          form.setValue('lousaId', null, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }}
+      />
+
       <DialogFooter>
         <Button
           type="button"
@@ -789,24 +883,58 @@ export function CadernoErroFormDialog({
   const [manualOrigin, setManualOrigin] =
     useState<ManualErrorOrigin>('EXTERNAL_LINK');
   const [draft, setDraft] = useState<ManualDraftSnapshot>(() =>
-    createInitialDraft(defaultTema)
+    createDraftFromSource(editingErro, defaultTema)
   );
+  const [isLousaEditorOpen, setIsLousaEditorOpen] = useState(false);
   const snapshotGetterRef = useRef<
     (() => Partial<ManualDraftSnapshot>) | null
   >(null);
+  const sessionCreatedLousaIdsRef = useRef<Set<string>>(new Set());
   const wasOpenRef = useRef(false);
+  const lastEditingIdRef = useRef<string | null>(editingErro?.id ?? null);
+  const editingErroRef = useRef(editingErro);
+  editingErroRef.current = editingErro;
   const defaultTemaRef = useRef(defaultTema);
   defaultTemaRef.current = defaultTema;
 
+  const cleanupOrphanLousas = useCallback(() => {
+    const ids = Array.from(sessionCreatedLousaIdsRef.current);
+    sessionCreatedLousaIdsRef.current.clear();
+    for (const id of ids) {
+      void lousasApi.deleteLousa(id).catch(() => undefined);
+    }
+  }, []);
+
+  const currentEditingId = editingErro?.id ?? null;
+
   useEffect(() => {
     const justOpened = open && !wasOpenRef.current;
+    const editingChangedWhileOpen =
+      open && lastEditingIdRef.current !== currentEditingId;
     wasOpenRef.current = open;
+    lastEditingIdRef.current = currentEditingId;
 
-    if (justOpened && !editingErro) {
-      setManualOrigin('EXTERNAL_LINK');
-      setDraft(createInitialDraft(defaultTemaRef.current));
+    if (!open) {
+      setIsLousaEditorOpen(false);
+      return;
     }
-  }, [open, editingErro]);
+
+    if (justOpened || editingChangedWhileOpen) {
+      sessionCreatedLousaIdsRef.current.clear();
+      setManualOrigin('EXTERNAL_LINK');
+      setDraft(createDraftFromSource(editingErroRef.current, defaultTemaRef.current));
+    }
+  }, [open, currentEditingId]);
+
+  function handleDialogOpenChange(nextOpen: boolean): void {
+    if (!nextOpen && (isSubmitting || isLousaEditorOpen)) {
+      return;
+    }
+    if (!nextOpen) {
+      cleanupOrphanLousas();
+    }
+    onOpenChange(nextOpen);
+  }
 
   function handleSelectManualOrigin(nextOrigin: ManualErrorOrigin): void {
     if (nextOrigin === manualOrigin || isSubmitting) {
@@ -823,6 +951,46 @@ export function CadernoErroFormDialog({
     setManualOrigin(nextOrigin);
   }
 
+  function handleRequestOpenLousa(): void {
+    const currentSnapshot = snapshotGetterRef.current?.();
+    if (currentSnapshot) {
+      setDraft((prev) => ({
+        ...prev,
+        ...currentSnapshot,
+      }));
+    }
+    setIsLousaEditorOpen(true);
+  }
+
+  function handleLousaSaved(savedLousa: LousaDto): void {
+    if (!draft.lousaId) {
+      sessionCreatedLousaIdsRef.current.add(savedLousa.id);
+    }
+    setDraft((prev) => ({
+      ...prev,
+      lousaId: savedLousa.id,
+      lousaPreview: savedLousa,
+    }));
+    setIsLousaEditorOpen(false);
+  }
+
+  function handleRemoveLousa(currentLousaId: string | null): void {
+    if (
+      currentLousaId &&
+      sessionCreatedLousaIdsRef.current.has(currentLousaId)
+    ) {
+      sessionCreatedLousaIdsRef.current.delete(currentLousaId);
+      void lousasApi.deleteLousa(currentLousaId).catch(() => undefined);
+    }
+    const currentSnapshot = snapshotGetterRef.current?.();
+    setDraft((prev) => ({
+      ...prev,
+      ...(currentSnapshot ?? {}),
+      lousaId: null,
+      lousaPreview: null,
+    }));
+  }
+
   async function handleSubmitExternalLink(
     values: ExternalLinkFormOutput
   ): Promise<void> {
@@ -833,6 +1001,7 @@ export function CadernoErroFormDialog({
         linkExterno: values.linkExterno,
         titulo: values.titulo,
         observacaoErro: values.observacaoErro,
+        lousaId: values.lousaId ?? null,
         temaIds: values.temaIds,
       });
       UpdateCadernoErroSchema.parse(payload);
@@ -842,6 +1011,7 @@ export function CadernoErroFormDialog({
       await createMutation.mutateAsync(validated);
     }
 
+    sessionCreatedLousaIdsRef.current.clear();
     onOpenChange(false);
   }
 
@@ -855,6 +1025,7 @@ export function CadernoErroFormDialog({
         enunciadoCompleto: values.enunciadoCompleto,
         linkExterno: values.linkExterno,
         observacaoErro: values.observacaoErro,
+        lousaId: values.lousaId ?? null,
         temaIds: values.temaIds,
       });
       UpdateCadernoErroSchema.parse(payload);
@@ -864,6 +1035,7 @@ export function CadernoErroFormDialog({
       await createMutation.mutateAsync(validated);
     }
 
+    sessionCreatedLousaIdsRef.current.clear();
     onOpenChange(false);
   }
 
@@ -877,111 +1049,134 @@ export function CadernoErroFormDialog({
     const payload = buildUpdateCadernoErroPayload({
       origem: 'SIMULADO',
       observacaoErro: values.observacaoErro,
+      lousaId: values.lousaId ?? null,
       temaIds: values.temaIds,
     });
     UpdateCadernoErroSchema.parse(payload);
     await updateMutation.mutateAsync({ id: editingErro.id, input: payload });
+    sessionCreatedLousaIdsRef.current.clear();
     onOpenChange(false);
   }
 
   const activeOrigin = editingErro ? editingErro.origem : manualOrigin;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing
-              ? 'Editar Registro do Caderno de Erros'
-              : 'Registrar Erro Manual'}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? 'Atualize os dados do erro conforme as regras da origem deste registro.'
-              : 'Cadastre manualmente uma questão externa ou completa para acompanhamento no Caderno de Erros.'}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog
+        open={open && !isLousaEditorOpen}
+        onOpenChange={handleDialogOpenChange}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {isEditing
+                ? 'Editar Registro do Caderno de Erros'
+                : 'Registrar Erro Manual'}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? 'Atualize os dados do erro conforme as regras da origem deste registro.'
+                : 'Cadastre manualmente uma questão externa ou completa para acompanhamento no Caderno de Erros.'}
+            </DialogDescription>
+          </DialogHeader>
 
-        {isEditing && editingErro ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3.5 py-2.5">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Lock className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-              <span>Origem do registro (travada):</span>
-            </span>
-            <Badge variant="outline" className="font-medium">
-              {ERRO_ORIGEM_LABELS[editingErro.origem]}
-            </Badge>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <Label>Origem da questão (exclusivamente manual)</Label>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {MANUAL_ORIGEM_OPTIONS.map((option) => {
-                const isSelected = manualOrigin === option.value;
-                const Icon =
-                  option.value === 'EXTERNAL_LINK' ? ExternalLink : FileText;
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={isSubmitting}
-                    aria-pressed={isSelected}
-                    onClick={() => handleSelectManualOrigin(option.value)}
-                    className={cn(
-                      'flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      isSelected
-                        ? 'border-primary/40 bg-primary/10 text-foreground'
-                        : 'border-border bg-background hover:bg-accent'
-                    )}
-                  >
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <Icon
-                        className={cn(
-                          'h-4 w-4 shrink-0',
-                          isSelected ? 'text-primary' : 'text-muted-foreground'
-                        )}
-                        strokeWidth={1.75}
-                      />
-                      <span>{option.label}</span>
-                    </div>
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      {option.description}
-                    </p>
-                  </button>
-                );
-              })}
+          {isEditing && editingErro ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3.5 py-2.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Lock className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                <span>Origem do registro (travada):</span>
+              </span>
+              <Badge variant="outline" className="font-medium">
+                {ERRO_ORIGEM_LABELS[editingErro.origem]}
+              </Badge>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="space-y-2">
+              <Label>Origem da questão (exclusivamente manual)</Label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {MANUAL_ORIGEM_OPTIONS.map((option) => {
+                  const isSelected = manualOrigin === option.value;
+                  const Icon =
+                    option.value === 'EXTERNAL_LINK' ? ExternalLink : FileText;
 
-        {activeOrigin === 'SIMULADO' && editingErro ? (
-          <SimuladoEditSubform
-            editingErro={editingErro}
-            isSubmitting={isSubmitting}
-            onCancel={() => onOpenChange(false)}
-            onSubmitSimuladoEdit={handleSubmitSimuladoEdit}
-          />
-        ) : activeOrigin === 'EXTERNAL_LINK' ? (
-          <ExternalLinkSubform
-            editingErro={editingErro}
-            draft={draft}
-            snapshotGetterRef={snapshotGetterRef}
-            isSubmitting={isSubmitting}
-            onCancel={() => onOpenChange(false)}
-            onSubmitExternalLink={handleSubmitExternalLink}
-          />
-        ) : (
-          <GenericFullSubform
-            editingErro={editingErro}
-            draft={draft}
-            snapshotGetterRef={snapshotGetterRef}
-            isSubmitting={isSubmitting}
-            onCancel={() => onOpenChange(false)}
-            onSubmitGenericFull={handleSubmitGenericFull}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={isSubmitting}
+                      aria-pressed={isSelected}
+                      onClick={() => handleSelectManualOrigin(option.value)}
+                      className={cn(
+                        'flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        isSelected
+                          ? 'border-primary/40 bg-primary/10 text-foreground'
+                          : 'border-border bg-background hover:bg-accent'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Icon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            isSelected ? 'text-primary' : 'text-muted-foreground'
+                          )}
+                          strokeWidth={1.75}
+                        />
+                        <span>{option.label}</span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {option.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeOrigin === 'SIMULADO' && editingErro ? (
+            <SimuladoEditSubform
+              editingErro={editingErro}
+              draft={draft}
+              snapshotGetterRef={snapshotGetterRef}
+              isSubmitting={isSubmitting}
+              onRequestOpenLousa={handleRequestOpenLousa}
+              onRemoveLousa={handleRemoveLousa}
+              onCancel={() => handleDialogOpenChange(false)}
+              onSubmitSimuladoEdit={handleSubmitSimuladoEdit}
+            />
+          ) : activeOrigin === 'EXTERNAL_LINK' ? (
+            <ExternalLinkSubform
+              isEditing={isEditing}
+              draft={draft}
+              snapshotGetterRef={snapshotGetterRef}
+              isSubmitting={isSubmitting}
+              onRequestOpenLousa={handleRequestOpenLousa}
+              onRemoveLousa={handleRemoveLousa}
+              onCancel={() => handleDialogOpenChange(false)}
+              onSubmitExternalLink={handleSubmitExternalLink}
+            />
+          ) : (
+            <GenericFullSubform
+              isEditing={isEditing}
+              draft={draft}
+              snapshotGetterRef={snapshotGetterRef}
+              isSubmitting={isSubmitting}
+              onRequestOpenLousa={handleRequestOpenLousa}
+              onRemoveLousa={handleRemoveLousa}
+              onCancel={() => handleDialogOpenChange(false)}
+              onSubmitGenericFull={handleSubmitGenericFull}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <LousaCanvasModal
+        open={open && isLousaEditorOpen}
+        onOpenChange={setIsLousaEditorOpen}
+        lousaId={draft.lousaId}
+        title={draft.lousaId ? 'Editar Lousa' : 'Desenhar na Lousa'}
+        onSaved={handleLousaSaved}
+      />
+    </>
   );
 }

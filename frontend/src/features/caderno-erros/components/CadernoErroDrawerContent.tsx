@@ -9,12 +9,14 @@ import {
   LifeBuoy,
   MessageSquareText,
   Pencil,
+  PenTool,
   Timer,
 } from 'lucide-react';
 import { CollapsibleStickySection } from '@/components/layout/CollapsibleStickySection';
 import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LousaPreviewCard } from '@/features/lousas/components/LousaPreviewCard';
 import {
   QUESTAO_RESULTADO_LABELS,
   formatTempoDecorrido,
@@ -326,6 +328,23 @@ export function CadernoErroDrawerContent({
           </p>
         )}
       </CollapsibleStickySection>
+
+      {erro.lousa ? (
+        <CollapsibleStickySection
+          variant="card"
+          ariaLabel="Lousa vinculada"
+          title="Lousa vinculada"
+          icon={
+            <PenTool className="h-4 w-4 text-primary" strokeWidth={1.75} />
+          }
+          defaultOpen={true}
+        >
+          <LousaPreviewCard
+            lousa={erro.lousa}
+            title="Lousa do registro"
+          />
+        </CollapsibleStickySection>
+      ) : null}
 
       {onCollapse ? (
         <div className="flex justify-end border-t border-border/60 pt-3">

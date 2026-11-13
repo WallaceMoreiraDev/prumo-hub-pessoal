@@ -11,5 +11,6 @@ export type {
   TablesUpdate,
 } from './database.types';
 export * from './enums.types';
+export * from './lousas.types';
 export * from './simulados.types';
 export * from './temas.types';

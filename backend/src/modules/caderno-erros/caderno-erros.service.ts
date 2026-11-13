@@ -11,9 +11,13 @@ import type {
 } from '@shared/schemas/caderno-erros.schema';
 import type { CadernoErroDto } from '@shared/types/caderno-erros.types';
 import type { ErroOrigem } from '@shared/types/enums.types';
+import type { EdgeLogger } from '../../config/logger';
 import type { AppSupabaseClient } from '../../config/supabase';
 import { AppError } from '../../errors/AppError';
 import { buildPaginationMeta } from '../../utils/response';
+import type { LousaRelationRow } from '../lousas/lousas.mapper';
+import type { LousaStoragePaths } from '../lousas/lousas.repository';
+import { lousasService } from '../lousas/lousas.service';
 import { unwrapSingleRelation } from '../temas/temas.mapper';
 import { temasRepository } from '../temas/temas.repository';
 import {
@@ -28,6 +32,19 @@ import {
 export interface ListCadernoErrosResult {
   items: CadernoErroDto[];
   pagination: PaginationMeta;
+}
+
+function toLousaStoragePaths(
+  lousaRow: Pick<LousaRelationRow, 'id' | 'scene_storage_path' | 'preview_storage_path'> | null
+): LousaStoragePaths | null {
+  if (!lousaRow) {
+    return null;
+  }
+  return {
+    id: lousaRow.id,
+    sceneStoragePath: lousaRow.scene_storage_path,
+    previewStoragePath: lousaRow.preview_storage_path,
+  };
 }
 
 function normalizeNullableText(
@@ -45,6 +62,9 @@ function resolveUpdateColumns(
   input: UpdateCadernoErroInput
 ): CadernoErroEditableColumns {
   const details: ApiValidationErrorDetail[] = [];
+
+  const nextLousaId =
+    input.lousaId !== undefined ? input.lousaId : existing.lousa_id;
 
   if (existing.origem === 'SIMULADO') {
     if (input.codigoReferencia !== undefined) {
@@ -89,6 +109,7 @@ function resolveUpdateColumns(
         input.observacaoErro !== undefined
           ? normalizeNullableText(input.observacaoErro)
           : existing.observacao_erro,
+      lousa_id: nextLousaId,
     };
   }
 
@@ -152,6 +173,7 @@ function resolveUpdateColumns(
       enunciado_completo: null,
       link_externo: nextLinkExterno,
       observacao_erro: nextObservacaoErro,
+      lousa_id: nextLousaId,
     };
   }
 
@@ -207,6 +229,7 @@ function resolveUpdateColumns(
     enunciado_completo: nextEnunciadoCompleto,
     link_externo: nextLinkExterno,
     observacao_erro: nextObservacaoErro,
+    lousa_id: nextLousaId,
   };
 }
 
@@ -235,7 +258,8 @@ export class CadernoErrosService {
   public async list(
     supabase: AppSupabaseClient,
     userId: string,
-    query: CadernoErrosQuery
+    query: CadernoErrosQuery,
+    logger?: EdgeLogger
   ): Promise<ListCadernoErrosResult> {
     const { rows, total } = await cadernoErrosRepository.listPaginated(
       supabase,
@@ -243,8 +267,14 @@ export class CadernoErrosService {
       query
     );
 
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      rows.map((row) => unwrapSingleRelation(row.lousa)),
+      logger
+    );
+
     return {
-      items: rows.map(mapCadernoErroDto),
+      items: rows.map((row) => mapCadernoErroDto(row, previewUrlMap)),
       pagination: buildPaginationMeta(query.page, query.limit, total),
     };
   }
@@ -252,19 +282,28 @@ export class CadernoErrosService {
   public async getById(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<CadernoErroDto> {
     const row = await cadernoErrosRepository.findById(supabase, userId, id);
     if (!row) {
       throw new AppError(ERROR_CODES.CADERNO_ERRO_NOT_FOUND, 404);
     }
-    return mapCadernoErroDto(row);
+
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(row.lousa)],
+      logger
+    );
+
+    return mapCadernoErroDto(row, previewUrlMap);
   }
 
   public async createManual(
     supabase: AppSupabaseClient,
     userId: string,
-    input: CreateManualErrorInput
+    input: CreateManualErrorInput,
+    logger?: EdgeLogger
   ): Promise<CadernoErroDto> {
     const origem: ErroOrigem = input.origem;
     if (origem !== 'EXTERNAL_LINK' && origem !== 'GENERIC_FULL') {
@@ -274,44 +313,61 @@ export class CadernoErrosService {
     const uniqueTemaIds = [...new Set(input.temaIds)];
     await this.ensureAllTemasExist(supabase, userId, uniqueTemaIds);
 
+    const lousaId = input.lousaId ?? null;
+    if (lousaId !== null) {
+      await lousasService.ensureLousaAvailableForLink(
+        supabase,
+        userId,
+        lousaId
+      );
+    }
+
     const observacaoErro = normalizeNullableText(input.observacaoErro);
 
+    let createdRow: CadernoErroWithRelationsRow;
     if (input.origem === 'EXTERNAL_LINK') {
       const codigoReferencia = input.codigoReferencia.trim();
       const tituloOpcional = normalizeNullableText(input.titulo);
       const titulo = tituloOpcional ?? codigoReferencia;
 
-      const createdRow = await cadernoErrosRepository.create(supabase, userId, {
+      createdRow = await cadernoErrosRepository.create(supabase, userId, {
         origem: 'EXTERNAL_LINK',
         codigoReferencia,
         titulo,
         enunciadoCompleto: null,
         linkExterno: input.linkExterno,
         observacaoErro,
+        lousaId,
         temaIds: uniqueTemaIds,
       });
-
-      return mapCadernoErroDto(createdRow);
+    } else {
+      createdRow = await cadernoErrosRepository.create(supabase, userId, {
+        origem: 'GENERIC_FULL',
+        codigoReferencia: null,
+        titulo: input.titulo.trim(),
+        enunciadoCompleto: input.enunciadoCompleto.trim(),
+        linkExterno: normalizeNullableText(input.linkExterno),
+        observacaoErro,
+        lousaId,
+        temaIds: uniqueTemaIds,
+      });
     }
 
-    const createdRow = await cadernoErrosRepository.create(supabase, userId, {
-      origem: 'GENERIC_FULL',
-      codigoReferencia: null,
-      titulo: input.titulo.trim(),
-      enunciadoCompleto: input.enunciadoCompleto.trim(),
-      linkExterno: normalizeNullableText(input.linkExterno),
-      observacaoErro,
-      temaIds: uniqueTemaIds,
-    });
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(createdRow.lousa)],
+      logger
+    );
 
-    return mapCadernoErroDto(createdRow);
+    return mapCadernoErroDto(createdRow, previewUrlMap);
   }
 
   public async update(
     supabase: AppSupabaseClient,
     userId: string,
     id: string,
-    input: UpdateCadernoErroInput
+    input: UpdateCadernoErroInput,
+    logger?: EdgeLogger
   ): Promise<CadernoErroDto> {
     const existingRow = await cadernoErrosRepository.findById(
       supabase,
@@ -328,9 +384,21 @@ export class CadernoErrosService {
       enunciado_completo: existingRow.enunciado_completo,
       link_externo: existingRow.link_externo,
       observacao_erro: existingRow.observacao_erro,
+      lousa_id: existingRow.lousa_id,
     };
 
     const nextColumns = resolveUpdateColumns(existingRow, input);
+
+    if (
+      nextColumns.lousa_id !== null &&
+      nextColumns.lousa_id !== existingRow.lousa_id
+    ) {
+      await lousasService.ensureLousaAvailableForLink(
+        supabase,
+        userId,
+        nextColumns.lousa_id
+      );
+    }
 
     let toAddTemaIds: string[] = [];
     let toRemoveTemaIds: string[] = [];
@@ -356,6 +424,10 @@ export class CadernoErrosService {
       );
     }
 
+    const previousLousaPaths = toLousaStoragePaths(
+      unwrapSingleRelation(existingRow.lousa)
+    );
+
     const updatedRow = await cadernoErrosRepository.update(supabase, userId, {
       id,
       previousColumns,
@@ -364,14 +436,29 @@ export class CadernoErrosService {
       toRemoveTemaIds,
     });
 
-    return mapCadernoErroDto(updatedRow);
+    if (previousLousaPaths && nextColumns.lousa_id !== existingRow.lousa_id) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        [previousLousaPaths],
+        logger
+      );
+    }
+
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(updatedRow.lousa)],
+      logger
+    );
+
+    return mapCadernoErroDto(updatedRow, previewUrlMap);
   }
 
   public async revisar(
     supabase: AppSupabaseClient,
     userId: string,
     id: string,
-    input: RevisarCadernoErroInput
+    input: RevisarCadernoErroInput,
+    logger?: EdgeLogger
   ): Promise<CadernoErroDto> {
     const updatedRow = await cadernoErrosRepository.concluirRevisaoRpc(
       supabase,
@@ -379,31 +466,69 @@ export class CadernoErrosService {
       id,
       input.reviewMode
     );
-    return mapCadernoErroDto(updatedRow);
+
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(updatedRow.lousa)],
+      logger
+    );
+
+    return mapCadernoErroDto(updatedRow, previewUrlMap);
   }
 
   public async devolver(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<CadernoErroDto> {
     const updatedRow = await cadernoErrosRepository.devolverParaPendenteRpc(
       supabase,
       userId,
       id
     );
-    return mapCadernoErroDto(updatedRow);
+
+    const previewUrlMap = await lousasService.hydratePreviewSignedUrls(
+      supabase,
+      [unwrapSingleRelation(updatedRow.lousa)],
+      logger
+    );
+
+    return mapCadernoErroDto(updatedRow, previewUrlMap);
   }
 
   public async remove(
     supabase: AppSupabaseClient,
     userId: string,
-    id: string
+    id: string,
+    logger?: EdgeLogger
   ): Promise<{ id: string }> {
+    const existingRow = await cadernoErrosRepository.findById(
+      supabase,
+      userId,
+      id
+    );
+    if (!existingRow) {
+      throw new AppError(ERROR_CODES.CADERNO_ERRO_NOT_FOUND, 404);
+    }
+
+    const lousaPaths = toLousaStoragePaths(
+      unwrapSingleRelation(existingRow.lousa)
+    );
+
     const deleted = await cadernoErrosRepository.delete(supabase, userId, id);
     if (!deleted) {
       throw new AppError(ERROR_CODES.CADERNO_ERRO_NOT_FOUND, 404);
     }
+
+    if (lousaPaths) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        [lousaPaths],
+        logger
+      );
+    }
+
     return { id: deleted.id };
   }
 }
