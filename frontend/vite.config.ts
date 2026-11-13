@@ -33,6 +33,11 @@ export default defineConfig({
               priority: 35,
             },
             {
+              name: 'vendor-excalidraw',
+              test: /[\\/]node_modules[\\/](@excalidraw|roughjs|perfect-freehand|pica|image-blob-reduce|jotai|jotai-scope|pako|fractional-indexing|open-color)[\\/]/,
+              priority: 32,
+            },
+            {
               name: 'vendor-query',
               test: /[\\/]node_modules[\\/]@tanstack[\\/]/,
               priority: 30,

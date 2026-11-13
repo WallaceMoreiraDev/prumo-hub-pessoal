@@ -10,6 +10,7 @@ Este documento registra as entregas da **Backend AI** (rotas, contratos em `/sha
 - [x] **Módulo 1: Simulados (Preparação, Execução, Pós-Prova e Exportação IA)**
 - [x] **Módulo 2: Caderno de Erros (Listagem, Cadastro Manual Restrito e Revisão)**
 - [x] **Módulo 3: Temas, Revisão e Conexões Bidirecionais** *(entregue primeiro conforme ordem acordada para o backend)*
+- [x] **Módulo 4: Lousas Universal (`/api/v1/lousas`) e Integração em Temas/Reflexões, Caderno de Erros e Cascata de Simulados**
 
 ---
 
@@ -91,6 +92,13 @@ Definidos em `ERROR_CODES` no arquivo [`/shared/types/api.types.ts`](./shared/ty
 | `INVALID_MANUAL_ERROR_ORIGIN` | `400` | Origem inválida no cadastro manual (`SIMULADO` é proibido) |
 | `INVALID_REVIEW_MODE` | `400` | Modo de revisão diferente de `SOLO` ou `HELP` |
 | `INVALID_RESULTADO` | `400` | Resultado de questão diferente de `ACERTEI`, `PARCIAL` ou `ERREI` |
+| `LOUSA_NOT_FOUND` | `404` | Lousa ou arquivo no Storage (`lousas-private`) não encontrado |
+| `LOUSA_TOO_LARGE` | `413` | Tamanho somado (`scene + preview`) excede `LOUSA_MAX_TOTAL_SIZE_BYTES` (`3 MiB` / `3145728` bytes) |
+| `LOUSA_INVALID_PAYLOAD` | `400` | Multipart ausente/malformado, JSON da cena sem `elements`, MIME inválido ou magic bytes divergentes |
+| `LOUSA_ALREADY_IN_USE` | `409` | Tentativa de vincular uma lousa já associada a outra reflexão ou item do caderno de erros |
+| `LOUSA_IN_USE` | `409` | Tentativa de excluir diretamente (`DELETE /api/v1/lousas/:id`) uma lousa que ainda está vinculada |
+
+> **Atenção Frontend (`errorMessages.ts`):** Os 5 códigos `LOUSA_*` foram adicionados a `ERROR_CODES` (`ErrorCode`). É necessário mapear essas chaves em `frontend/src/lib/errorMessages.ts` e incluir `lousaId: null, lousa: null` nos mocks de `ReflexaoDto` e `CadernoErroDto` nos testes do Frontend (`DrawersStickyCollapse.test.tsx`, `ListUpdatingTransitions.test.tsx`, `reflexoes.test.ts`).
 
 ---
 
@@ -142,15 +150,17 @@ Todos os contratos são importáveis de `@shared` (ou caminhos específicos em `
   - Tipos: `ReviewMode` (`'SOLO' | 'HELP'`), `SimuladoStatus` (`'PREPARACAO' | 'EM_ANDAMENTO' | 'FINALIZADO'`), `QuestaoResultado` (`'ACERTEI' | 'PARCIAL' | 'ERREI'`), `ErroOrigem` (`'SIMULADO' | 'EXTERNAL_LINK' | 'GENERIC_FULL'`), `ManualErrorOrigin` (`'EXTERNAL_LINK' | 'GENERIC_FULL'`), `ErroStatus` (`'PENDENTE' | 'REVISADO'`).
   - Tuplas `as const`: `REVIEW_MODES`, `SIMULADO_STATUSES`, `QUESTAO_RESULTADOS`, `ERRO_ORIGENS`, `MANUAL_ERROR_ORIGINS`, `ERRO_STATUSES`.
 - [`auth.types.ts`](./shared/types/auth.types.ts): `AuthUserDto`, `HealthCheckDto` (`status`, `timestamp`, `runtime: 'cloudflare-workers'`).
-- [`temas.types.ts`](./shared/types/temas.types.ts): `TemaSortBy`, `TEMA_SORT_OPTIONS`, `TemaSummaryDto`, `TemaDto`, `TemaListItemDto`, `ReflexaoDto`, `TemaDetalheDto`.
+- [`temas.types.ts`](./shared/types/temas.types.ts): `TemaSortBy`, `TEMA_SORT_OPTIONS`, `TemaSummaryDto`, `TemaDto`, `TemaListItemDto`, `ReflexaoDto` (`conteudo: string | null`, `lousaId: string | null`, `lousa: LousaSummaryDto | null`), `TemaDetalheDto`.
 - [`simulados.types.ts`](./shared/types/simulados.types.ts): `SIMULADO_SORT_OPTIONS`, `SimuladoSortBy`, `SIMULADO_PDF_MAX_SIZE_BYTES` (`20 MiB`), `SIMULADO_PDF_SIGNED_URL_TTL_SECONDS` (`3600`), `SimuladoPensamentoDto`, `SimuladoQuestaoDto`, `SimuladoDto`, `SimuladoListItemDto`, `SimuladoDetalheDto`, `SimuladoPdfSignedUrlDto`, `SimuladoExportIaDto`.
-- [`caderno-erros.types.ts`](./shared/types/caderno-erros.types.ts): `CADERNO_ERRO_SORT_OPTIONS`, `CadernoErroSortBy`, `CadernoErroSimuladoMetaDto`, `CadernoErroDto`.
+- [`caderno-erros.types.ts`](./shared/types/caderno-erros.types.ts): `CADERNO_ERRO_SORT_OPTIONS`, `CadernoErroSortBy`, `CadernoErroSimuladoMetaDto`, `CadernoErroDto` (`lousaId: string | null`, `lousa: LousaSummaryDto | null`).
+- [`lousas.types.ts`](./shared/types/lousas.types.ts): `LOUSA_MAX_TOTAL_SIZE_BYTES` (`3 MiB` / `3145728`), `LOUSA_SIGNED_URL_TTL_SECONDS` (`3600`), `LOUSA_PREVIEW_MIME_TYPES` (`['image/webp', 'image/png']`), `LousaPreviewMimeType`, `LousaSummaryDto`, `LousaDto`, `LousaSignedUrlsDto`.
 
 #### Schemas Zod (`/shared/schemas/`)
 - [`common.schema.ts`](./shared/schemas/common.schema.ts): `UuidSchema`, `UuidParamSchema`, `PaginationQuerySchema` (`page` `1..10000`, `limit` `1..100`, `search` max `120`), `HttpUrlSchema` (`trim()` antes de validar URL `http`/`https`, max `2048`).
-- [`temas.schema.ts`](./shared/schemas/temas.schema.ts): `TemaNomeSchema` (trim, não vazio, max `80`, proibido `#`), `CreateTemaSchema`, `UpdateTemaSchema`, `TemasQuerySchema` (`page`, `limit`, `search`, `sortBy`, `reviewMode`), `RegistrarPraticaSchema`, `CreateReflexaoSchema` (impede `temaPrincipalId` em `temaConectadoIds`), `UpdateReflexaoSchema`.
+- [`temas.schema.ts`](./shared/schemas/temas.schema.ts): `TemaNomeSchema` (trim, não vazio, max `80`, proibido `#`), `CreateTemaSchema`, `UpdateTemaSchema`, `TemasQuerySchema` (`page`, `limit`, `search`, `sortBy`, `reviewMode`), `RegistrarPraticaSchema`, `CreateReflexaoSchema` (permite `conteudo` nulo/vazio quando `lousaId` presente, rejeita `conteudo: null` + `lousaId: null` e impede `temaPrincipalId` em `temaConectadoIds`), `UpdateReflexaoSchema` (suporta `lousaId?: string | null` e `conteudo?: string | null`).
 - [`simulados.schema.ts`](./shared/schemas/simulados.schema.ts): `CreateSimuladoSchema` (`duracaoConfiguradaSegundos` inteiro `1..86400`), `UpdateSimuladoSchema`, `SimuladosQuerySchema` (`page`, `limit`, `search`, `status`, `sortBy`), `SimuladoQuestaoParamsSchema`, `SimuladoPensamentoParamsSchema`, `CreateSimuladoQuestaoSchema`, `UpdateSimuladoQuestaoSchema`, `CreateSimuladoPensamentoSchema`, `UpdateSimuladoPensamentoSchema`, `FinalizarSimuladoSchema`, `ClassificarQuestaoSimuladoSchema` (`temaIds` padrão `[]`, rejeita `observacaoPosRevisao` preenchida quando `resultado === 'ACERTEI'` e normaliza para `null`).
-- [`caderno-erros.schema.ts`](./shared/schemas/caderno-erros.schema.ts): `CreateManualErrorSchema` (`z.discriminatedUnion('origem', ...)` aceitando **exclusivamente** `EXTERNAL_LINK` — normalizando `titulo: ""` para `undefined` — e `GENERIC_FULL`), `UpdateCadernoErroSchema`, `CadernoErrosQuerySchema` (`page`, `limit`, `search`, `status`, `temaId`, `origem`, `sortBy`), `RevisarCadernoErroSchema`.
+- [`caderno-erros.schema.ts`](./shared/schemas/caderno-erros.schema.ts): `CreateManualErrorSchema` (`z.discriminatedUnion('origem', ...)` aceitando **exclusivamente** `EXTERNAL_LINK` — normalizando `titulo: ""` para `undefined` — e `GENERIC_FULL`, ambos com `lousaId?: string | null`), `UpdateCadernoErroSchema` (`lousaId?: string | null` suportado nas 3 origens), `CadernoErrosQuerySchema` (`page`, `limit`, `search`, `status`, `temaId`, `origem`, `sortBy`), `RevisarCadernoErroSchema`.
+- [`lousas.schema.ts`](./shared/schemas/lousas.schema.ts): `LousaPreviewMimeSchema`, `LousaParamSchema`, `LousaSceneSchema` (`elements` array obrigatório + `type?: 'excalidraw'`), `LousaParamInput`, `LousaScenePayload`.
 
 ---
 
@@ -328,34 +338,39 @@ Registra prática/revisão avulsa diretamente para um ou mais temas via RPC tran
 
 ### 3. Endpoints de Reflexões e Conexões (`/api/v1/reflexoes`)
 
+> **Performance e Lousas:** `GET /api/v1/temas` **não** gera URLs assinadas de lousas para evitar gargalo de listagem. Já `GET /api/v1/temas/:id`, `GET /api/v1/reflexoes/:id`, `POST /api/v1/reflexoes` e `PATCH /api/v1/reflexoes/:id` hidratam `lousa.previewSignedUrl` em lote (`createSignedUrls`, TTL 3600s).
+
 #### `GET /api/v1/reflexoes/:id`
-Busca uma reflexão/conexão por ID.
+Busca uma reflexão/conexão por ID (incluindo `lousa` com `previewSignedUrl` assinada).
 
 - **Params:** `id` (`UUID`)
 - **Resposta `200`:** `ApiSuccessResponse<ReflexaoDto>`
 - **Erros:** `404 REFLEXAO_NOT_FOUND`.
 
 #### `POST /api/v1/reflexoes`
-Cria uma reflexão própria (`temaConectadoIds: []`) ou uma conexão bidirecional (`temaConectadoIds: [...]`).
+Cria uma reflexão própria (`temaConectadoIds: []`) ou uma conexão bidirecional (`temaConectadoIds: [...]`), aceitando texto (`conteudo`), lousa (`lousaId`), ou ambos.
 
 - **Body (`CreateReflexaoSchema`):**
   ```json
   {
     "temaPrincipalId": "550e8400-e29b-41d4-a716-446655440001",
     "temaConectadoIds": ["550e8400-e29b-41d4-a716-446655440002"],
-    "conteudo": "Relação entre Dijkstra e BFS."
+    "conteudo": "Relação entre Dijkstra e BFS.",
+    "lousaId": "770e8400-e29b-41d4-a716-446655440099"
   }
   ```
   - `temaConectadoIds` *(opcional, default `[]`, max `30` — deduplicado pelo backend)*
-  - `conteudo`: string não vazia após trim (`1..5000` chars)
+  - `conteudo`: string opcional/nullable (`1..5000` chars após trim; strings em branco são normalizadas para `null`)
+  - `lousaId`: UUID opcional/nullable; pelo menos um entre `conteudo` e `lousaId` deve estar preenchido.
 - **Validações:**
   - Rejeita `temaPrincipalId` incluído em `temaConectadoIds` (`400 VALIDATION_ERROR` no schema Zod / `400 REFLEXAO_SELF_CONNECTION` no serviço).
-  - Pré-valida existência de `temaPrincipalId` e de todos os `temaConectadoIds` para o usuário (`404 TEMA_NOT_FOUND`).
+  - Rejeita `conteudo: null` simultâneo com `lousaId: null` (`400 VALIDATION_ERROR`).
+  - Pré-valida existência de `temaPrincipalId`, `temaConectadoIds` (`404 TEMA_NOT_FOUND`) e disponibilidade exclusiva de `lousaId` (`404 LOUSA_NOT_FOUND` ou `409 LOUSA_ALREADY_IN_USE`).
   - Executa rollback compensatório removendo a reflexão criada caso falhe a gravação dos vínculos em `reflexao_temas_conectados`.
 - **Resposta `201`:** `ApiSuccessResponse<ReflexaoDto>`
 
 #### `PATCH /api/v1/reflexoes/:id`
-Atualiza parcialmente conteúdo, tema principal e/ou temas conectados da reflexão.
+Atualiza parcialmente conteúdo, `lousaId` (incluindo vincular, trocar ou remover passando `null`), tema principal e/ou temas conectados da reflexão.
 
 - **Params:** `id` (`UUID`)
 - **Body (`UpdateReflexaoSchema`):** ao menos 1 dos campos:
@@ -363,18 +378,21 @@ Atualiza parcialmente conteúdo, tema principal e/ou temas conectados da reflex�
   {
     "temaPrincipalId": "550e8400-e29b-41d4-a716-446655440001",
     "temaConectadoIds": ["550e8400-e29b-41d4-a716-446655440003"],
-    "conteudo": "Texto atualizado da reflexão."
+    "conteudo": "Texto atualizado da reflexão.",
+    "lousaId": null
   }
   ```
 - **Comportamento:**
-  - Faz *merge* entre o estado atual salvo no banco e os campos enviados na requisição.
-  - Se o estado resultante colocar `temaPrincipalId` dentro de `temaConectadoIds` (ex.: atualização apenas de `temaPrincipalId` ou apenas de `temaConectadoIds`), retorna `400 REFLEXAO_SELF_CONNECTION` (`400 VALIDATION_ERROR` se ambos conflitarem no próprio payload).
-  - Pré-valida todos os `temaIds` resultantes (`404 TEMA_NOT_FOUND`) e sincroniza `reflexao_temas_conectados` por diff seguro (inserindo novos / removendo retirados) com rollback compensatório.
+  - Faz *merge* entre o estado atual salvo no banco e os campos enviados na requisição (envio explícito de `conteudo: ""` converte para `null`; omitir `conteudo` preserva o valor atual).
+  - Garante que o estado resultante mantenha ao menos `conteudo` ou `lousaId` preenchido (`400 VALIDATION_ERROR`).
+  - Se trocar ou desvincular `lousaId`, o trigger de banco remove a lousa órfã e o backend remove os objetos antigos do Storage em *best-effort*.
+  - Se o estado resultante colocar `temaPrincipalId` dentro de `temaConectadoIds`, retorna `400 REFLEXAO_SELF_CONNECTION`.
+  - Pré-valida todos os `temaIds` resultantes (`404 TEMA_NOT_FOUND`) e `lousaId` alterado (`404 LOUSA_NOT_FOUND` / `409 LOUSA_ALREADY_IN_USE`).
 - **Resposta `200`:** `ApiSuccessResponse<ReflexaoDto>`
-- **Erros:** `404 REFLEXAO_NOT_FOUND`, `404 TEMA_NOT_FOUND`, `400 REFLEXAO_SELF_CONNECTION`, `400 VALIDATION_ERROR`.
+- **Erros:** `404 REFLEXAO_NOT_FOUND`, `404 TEMA_NOT_FOUND`, `404 LOUSA_NOT_FOUND`, `409 LOUSA_ALREADY_IN_USE`, `400 REFLEXAO_SELF_CONNECTION`, `400 VALIDATION_ERROR`.
 
 #### `DELETE /api/v1/reflexoes/:id`
-Exclui uma reflexão/conexão (removendo por cascata os vínculos em `reflexao_temas_conectados`).
+Exclui uma reflexão/conexão (removendo por cascata vínculos em `reflexao_temas_conectados`, a lousa órfã via trigger e os arquivos da lousa no Storage em *best-effort*).
 
 - **Params:** `id` (`UUID`)
 - **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
@@ -499,22 +517,22 @@ Cadastra manualmente uma questão externa (`EXTERNAL_LINK`) ou questão genéric
       "observacaoErro": "Esqueci que não passa corrente pelo resistor central."
     }
     ```
-    *(Para `GENERIC_FULL`, `linkExterno` é opcional e `""` é normalizado para `null`).*
-- **Resposta `201`:** `ApiSuccessResponse<CadernoErroDto>` (`simuladoMeta: null`)
-- **Erros:** `400 VALIDATION_ERROR`, `400 INVALID_MANUAL_ERROR_ORIGIN` (no domínio caso `origem === 'SIMULADO'`), `404 TEMA_NOT_FOUND`.
+    *(Para `GENERIC_FULL`, `linkExterno` é opcional e `""` é normalizado para `null`. Ambos os formulários aceitam `lousaId?: string | null` opcional).*
+- **Resposta `201`:** `ApiSuccessResponse<CadernoErroDto>` (`simuladoMeta: null`, com `lousa` hidratada quando vinculada)
+- **Erros:** `400 VALIDATION_ERROR`, `400 INVALID_MANUAL_ERROR_ORIGIN` (no domínio caso `origem === 'SIMULADO'`), `404 TEMA_NOT_FOUND`, `404 LOUSA_NOT_FOUND`, `409 LOUSA_ALREADY_IN_USE`.
 
 #### `PATCH /api/v1/caderno-erros/:id`
 Atualiza um registro do Caderno de Erros respeitando restrições estritas por `origem`:
 
 - **Params:** `id` (`UUID`)
-- **Body (`UpdateCadernoErroSchema` — ao menos 1 campo):** `codigoReferencia`, `titulo`, `enunciadoCompleto`, `linkExterno`, `observacaoErro`, `temaIds`.
+- **Body (`UpdateCadernoErroSchema` — ao menos 1 campo):** `codigoReferencia`, `titulo`, `enunciadoCompleto`, `linkExterno`, `observacaoErro`, `temaIds`, `lousaId`.
 - **Regras por Origem do Registro:**
-  - **`SIMULADO`:** aceita **apenas** `observacaoErro` e `temaIds` (`>= 1` tema). Tentativa de enviar `codigoReferencia`, `titulo`, `enunciadoCompleto` ou `linkExterno` retorna `400 VALIDATION_ERROR` com `details` indicando os campos bloqueados.
-  - **`EXTERNAL_LINK`:** aceita `codigoReferencia`, `linkExterno`, `titulo` (mantém atual se omitido; não pode ficar vazio), `observacaoErro` e `temaIds`. Rejeita `enunciadoCompleto` não nulo e garante estado resultante válido (`codigoReferencia` e `linkExterno` presentes) via `400 VALIDATION_ERROR`.
-  - **`GENERIC_FULL`:** aceita `titulo`, `enunciadoCompleto`, `linkExterno`, `observacaoErro` e `temaIds`. Garante que `titulo` e `enunciadoCompleto` permaneçam não vazios e rejeita `codigoReferencia` não nulo via `400 VALIDATION_ERROR`.
-- **Sincronização:** `temaIds` é pré-validado (`404 TEMA_NOT_FOUND`) e sincronizado por diff seguro em `caderno_erro_temas` com rollback compensatório.
+  - **`SIMULADO`:** aceita `observacaoErro`, `temaIds` (`>= 1` tema) e **`lousaId`** (`string | null`). Tentativa de enviar `codigoReferencia`, `titulo`, `enunciadoCompleto` ou `linkExterno` retorna `400 VALIDATION_ERROR` com `details` indicando os campos bloqueados.
+  - **`EXTERNAL_LINK`:** aceita `codigoReferencia`, `linkExterno`, `titulo` (mantém atual se omitido; não pode ficar vazio), `observacaoErro`, `temaIds` e `lousaId`. Rejeita `enunciadoCompleto` não nulo e garante estado resultante válido (`codigoReferencia` e `linkExterno` presentes) via `400 VALIDATION_ERROR`.
+  - **`GENERIC_FULL`:** aceita `titulo`, `enunciadoCompleto`, `linkExterno`, `observacaoErro`, `temaIds` e `lousaId`. Garante que `titulo` e `enunciadoCompleto` permaneçam não vazios e rejeita `codigoReferencia` não nulo via `400 VALIDATION_ERROR`.
+- **Lousa e Sincronização:** `lousaId` alterado é validado (`404 LOUSA_NOT_FOUND` / `409 LOUSA_ALREADY_IN_USE`), e troca/remoção dispara limpeza dos arquivos antigos no Storage; `temaIds` é pré-validado (`404 TEMA_NOT_FOUND`) e sincronizado por diff seguro em `caderno_erro_temas`. Listagens (`GET /caderno-erros`), detalhe, `revisar` e `devolver` retornam `lousa.previewSignedUrl` hidratada em 1 lote.
 - **Resposta `200`:** `ApiSuccessResponse<CadernoErroDto>`
-- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`, `404 TEMA_NOT_FOUND`, `400 VALIDATION_ERROR`.
+- **Erros:** `404 CADERNO_ERRO_NOT_FOUND`, `404 TEMA_NOT_FOUND`, `404 LOUSA_NOT_FOUND`, `409 LOUSA_ALREADY_IN_USE`, `400 VALIDATION_ERROR`.
 
 #### `POST /api/v1/caderno-erros/:id/revisar`
 Conclui a revisão de um erro (ou atualiza o modo de revisão de um item já revisado, ex.: `HELP` → `SOLO`) invocando a RPC atômica **`rpc_concluir_revisao_erro`**. Atualiza o erro para `status: 'REVISADO'` e atualiza `lastReviewedAt` + `lastReviewMode` em **todos os temas vinculados**.
@@ -565,12 +583,12 @@ Todas as rotas abaixo exigem autenticação via `Authorization: Bearer <token>` 
   - Envie `multipart/form-data` com campo `file` (`File`), sem definir `Content-Type` manualmente no `fetch` (deixe o browser gerar o `boundary`).
   - Tamanho máximo **`20 MiB`** (`SIMULADO_PDF_MAX_SIZE_BYTES`); validação server-side de MIME + magic bytes `%PDF-`.
 - **Acoplamento Pós-Prova (`classificar` — `GEMINI.md` 3.1 e 3.2):**
-  - **`ACERTEI`:** exige `observacaoPosRevisao` vazia/`null`; atualiza `lastReviewedAt = now` e `lastReviewMode = 'SOLO'` em todos os `temaIds` vinculados (quando `temaIds.length > 0`) e **remove** eventual registro prévio daquela questão no Caderno de Erros.
+  - **`ACERTEI`:** exige `observacaoPosRevisao` vazia/`null`; atualiza `lastReviewedAt = now` e `lastReviewMode = 'SOLO'` em todos os `temaIds` vinculados (quando `temaIds.length > 0`), **remove** eventual registro prévio daquela questão no Caderno de Erros e limpa os arquivos no Storage de eventual lousa vinculada ao erro removido.
   - **`PARCIAL` ou `ERREI`:** permite `observacaoPosRevisao`; faz upsert atômico em `caderno_erros` (`origem: 'SIMULADO'`, `status: 'PENDENTE'`) e **NÃO** altera `lastReviewedAt`/`lastReviewMode` dos temas vinculados.
 - **Invalidação Obrigatória no TanStack Query:**
   - Mutações em simulados/questões/pensamentos/PDF devem invalidar `['simulados']` e `['simulados', simuladoId]`.
   - Mutações em `POST /simulados/:id/questoes/:questaoId/classificar` **devem invalidar** `['simulados']`, `['simulados', simuladoId]`, **`['caderno-erros']`** e **`['temas']`**.
-  - Mutações em `DELETE /simulados/:id` também devem invalidar **`['caderno-erros']`** (pois a exclusão remove em cascata erros originados do simulado).
+  - Mutações em `DELETE /simulados/:id` também devem invalidar **`['caderno-erros']`** (a exclusão remove em cascata erros originados do simulado e limpa suas eventuais lousas no Storage; o mesmo vale para `DELETE /simulados/:id/questoes/:questaoId`).
 
 ---
 
@@ -801,3 +819,78 @@ Gera o resumo completo em Markdown estruturado (`SimuladoExportIaDto`) para aná
   }
   ```
 - **Erros:** `404 SIMULADO_NOT_FOUND`, `409 SIMULADO_INVALID_STATUS_TRANSITION`.
+
+---
+
+## Módulo 4: Lousas Universal (`/api/v1/lousas`)
+
+Todas as rotas abaixo exigem autenticação via `Authorization: Bearer <token>` (isolamento multi-usuário estrito por RLS e bucket privado `lousas-private`).
+
+### 1. Regras de Negócio & Dicas de UI
+
+- **Ciclo de Vida e Exclusividade (1:1):**
+  - Uma lousa é criada via `POST /api/v1/lousas` (multipart) e devolve `id` + `previewSignedUrl` + `sceneSignedUrl`. Em seguida, o Frontend envia `lousaId` em `POST /api/v1/reflexoes`, `PATCH /api/v1/reflexoes/:id`, `POST /api/v1/caderno-erros` ou `PATCH /api/v1/caderno-erros/:id`.
+  - Uma mesma lousa só pode pertencer a **um único** registro ativo (`reflexoes` ou `caderno_erros`). Tentar reutilizar uma lousa já vinculada retorna `409 LOUSA_ALREADY_IN_USE`.
+  - Se o usuário cancelar o modal após fazer upload sem salvar a reflexão/erro, o Frontend pode chamar `DELETE /api/v1/lousas/:id` para limpar os arquivos órfãos.
+  - Excluir/trocar/desvincular via `PATCH`/`DELETE` da reflexão, do caderno de erros, de um tema (cascata de reflexões) ou de simulado/questão/`ACERTEI` (cascata de caderno de erros) já limpa registro e objetos no Storage automaticamente.
+- **Limites e Formatos Aceitos:**
+  - `scene` (`application/json`): JSON UTF-8 válido contendo `elements` (array) e opcionalmente `type: 'excalidraw'` (`LousaSceneSchema`).
+  - `preview` (`image/webp` preferencial, ou `image/png`): validado por extensão, MIME declarado **e magic bytes** reais do arquivo.
+  - Limite rígido: `scene.size + preview.size <= 3145728` (`LOUSA_MAX_TOTAL_SIZE_BYTES`, `3 MiB`). Acima disso retorna `413 LOUSA_TOO_LARGE`.
+- **URLs Assinadas (`TTL = 3600s`):**
+  - As URLs retornadas em `previewSignedUrl` / `sceneSignedUrl` expiram em `3600` segundos. Use `GET /api/v1/lousas/:id/urls` para renovar URLs expiradas ou carregar a cena (`sceneSignedUrl`) sob demanda ao abrir o editor.
+- **Invalidação recomendada no TanStack Query:**
+  - Ao atualizar o conteúdo de uma lousa existente via `PATCH /api/v1/lousas/:id`, invalidar `['lousas', lousaId]`, além da query do item pai (`['temas']` / `['reflexoes', id]` ou `['caderno-erros']`) para refletir o novo `previewSignedUrl` e `updatedAt`.
+
+---
+
+### 2. Endpoints (`/api/v1/lousas`)
+
+#### `POST /api/v1/lousas`
+Cria uma nova lousa enviando cena JSON e pré-visualização rasterizada (`multipart/form-data`). Executa rollback dos arquivos no Storage caso falhe qualquer etapa.
+
+- **Content-Type:** `multipart/form-data`
+- **Campos obrigatórios (`FormData`):**
+  - `scene`: arquivo JSON (`application/json`, UTF-8, array `elements`)
+  - `preview`: imagem raster (`image/webp` ou `image/png`, validada por magic bytes)
+- **Resposta `201`:** `ApiSuccessResponse<LousaDto>`
+- **Erros:** `400 LOUSA_INVALID_PAYLOAD`, `413 LOUSA_TOO_LARGE`.
+
+#### `GET /api/v1/lousas/:id`
+Retorna os metadados completos da lousa (`LousaDto`) com `previewSignedUrl` e `sceneSignedUrl` recém-assinadas em lote (`TTL = 3600s`).
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `ApiSuccessResponse<LousaDto>`
+- **Erros:** `404 LOUSA_NOT_FOUND`.
+
+#### `GET /api/v1/lousas/:id/urls`
+Renova apenas o par de URLs assinadas (`LousaSignedUrlsDto`) com custo mínimo.
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200` (`LousaSignedUrlsDto`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "previewSignedUrl": "https://.../storage/v1/object/sign/lousas-private/...",
+      "sceneSignedUrl": "https://.../storage/v1/object/sign/lousas-private/...",
+      "expiresInSeconds": 3600
+    }
+  }
+  ```
+- **Erros:** `404 LOUSA_NOT_FOUND`.
+
+#### `PATCH /api/v1/lousas/:id`
+Substitui os arquivos `scene` e `preview` de uma lousa existente (`multipart/form-data`), atualiza os metadados de tamanho/MIME no banco e remove eventual preview antigo se houver troca entre `.webp` e `.png`.
+
+- **Params:** `id` (`UUID`)
+- **Content-Type:** `multipart/form-data` com campos `scene` e `preview`
+- **Resposta `200`:** `ApiSuccessResponse<LousaDto>`
+- **Erros:** `404 LOUSA_NOT_FOUND`, `400 LOUSA_INVALID_PAYLOAD`, `413 LOUSA_TOO_LARGE`.
+
+#### `DELETE /api/v1/lousas/:id`
+Exclui uma lousa **órfã** (não vinculada a nenhuma reflexão nem registro do caderno de erros) e remove os arquivos do Storage.
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
+- **Erros:** `404 LOUSA_NOT_FOUND`, `409 LOUSA_IN_USE`.

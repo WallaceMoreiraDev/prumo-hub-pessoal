@@ -11,6 +11,7 @@ import {
 
 const TEMA_1 = '11111111-1111-4111-8111-111111111111';
 const TEMA_2 = '22222222-2222-4222-8222-222222222222';
+const LOUSA_1 = '33333333-3333-4333-8333-333333333333';
 
 describe('cadernoErros utils', () => {
   describe('formatTempoDecorrido', () => {
@@ -121,6 +122,51 @@ describe('cadernoErros utils', () => {
       });
       expect('codigoReferencia' in payload).toBe(false);
       expect(UpdateCadernoErroSchema.safeParse(payload).success).toBe(true);
+    });
+
+    it('propaga lousaId (vinculado ou null) nas 3 origens sem quebrar o contrato de PATCH', () => {
+      const simuladoComLousa = buildUpdateCadernoErroPayload({
+        origem: 'SIMULADO',
+        observacaoErro: 'Resumo gráfico.',
+        lousaId: LOUSA_1,
+        temaIds: [TEMA_1],
+      });
+      expect(simuladoComLousa).toEqual({
+        observacaoErro: 'Resumo gráfico.',
+        lousaId: LOUSA_1,
+        temaIds: [TEMA_1],
+      });
+      expect(UpdateCadernoErroSchema.safeParse(simuladoComLousa).success).toBe(
+        true
+      );
+
+      const externalRemovendoLousa = buildUpdateCadernoErroPayload({
+        origem: 'EXTERNAL_LINK',
+        codigoReferencia: 'Q10',
+        linkExterno: 'https://example.com/q10',
+        titulo: 'Questão 10',
+        observacaoErro: null,
+        lousaId: null,
+        temaIds: [TEMA_1],
+      });
+      expect(externalRemovendoLousa.lousaId).toBeNull();
+      expect(
+        UpdateCadernoErroSchema.safeParse(externalRemovendoLousa).success
+      ).toBe(true);
+
+      const genericComLousa = buildUpdateCadernoErroPayload({
+        origem: 'GENERIC_FULL',
+        titulo: 'Árvore de Fenwick',
+        enunciadoCompleto: 'Calcule soma de prefixos.',
+        linkExterno: null,
+        observacaoErro: null,
+        lousaId: LOUSA_1,
+        temaIds: [TEMA_2],
+      });
+      expect(genericComLousa.lousaId).toBe(LOUSA_1);
+      expect(UpdateCadernoErroSchema.safeParse(genericComLousa).success).toBe(
+        true
+      );
     });
   });
 

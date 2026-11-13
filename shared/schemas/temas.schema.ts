@@ -44,6 +44,35 @@ export const RegistrarPraticaSchema = z.object({
   }),
 });
 
+const NullableReflexaoConteudoInput = z
+  .string()
+  .max(5000, { error: 'O conteúdo deve ter no máximo 5000 caracteres.' })
+  .nullable()
+  .optional()
+  .transform((val) => {
+    if (val === undefined || val === null) {
+      return null;
+    }
+    const trimmed = val.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  });
+
+const OptionalNullableReflexaoConteudoInput = z
+  .string()
+  .max(5000, { error: 'O conteúdo deve ter no máximo 5000 caracteres.' })
+  .nullable()
+  .optional()
+  .transform((val) => {
+    if (val === undefined) {
+      return undefined;
+    }
+    if (val === null) {
+      return null;
+    }
+    const trimmed = val.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  });
+
 export const CreateReflexaoSchema = z
   .object({
     temaPrincipalId: UuidSchema,
@@ -52,15 +81,25 @@ export const CreateReflexaoSchema = z
       .max(30, { error: 'Selecione no máximo 30 temas conectados.' })
       .optional()
       .default([]),
-    conteudo: z
-      .string({ error: 'O conteúdo da reflexão é obrigatório.' })
-      .trim()
-      .min(1, { error: 'O conteúdo da reflexão não pode estar vazio.' })
-      .max(5000, { error: 'O conteúdo deve ter no máximo 5000 caracteres.' }),
+    conteudo: NullableReflexaoConteudoInput,
+    lousaId: UuidSchema.nullable().optional().default(null),
   })
-  .refine((data) => !data.temaConectadoIds.includes(data.temaPrincipalId), {
-    path: ['temaConectadoIds'],
-    error: 'O tema principal não pode estar na lista de temas conectados.',
+  .superRefine((data, ctx) => {
+    if (data.temaConectadoIds.includes(data.temaPrincipalId)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['temaConectadoIds'],
+        message: 'O tema principal não pode estar na lista de temas conectados.',
+      });
+    }
+
+    if (data.conteudo === null && data.lousaId === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['conteudo'],
+        message: 'Informe um texto de reflexão ou anexe uma lousa.',
+      });
+    }
   });
 
 export const UpdateReflexaoSchema = z
@@ -70,34 +109,42 @@ export const UpdateReflexaoSchema = z
       .array(UuidSchema)
       .max(30, { error: 'Selecione no máximo 30 temas conectados.' })
       .optional(),
-    conteudo: z
-      .string()
-      .trim()
-      .min(1, { error: 'O conteúdo da reflexão não pode estar vazio.' })
-      .max(5000, { error: 'O conteúdo deve ter no máximo 5000 caracteres.' })
-      .optional(),
+    conteudo: OptionalNullableReflexaoConteudoInput,
+    lousaId: UuidSchema.nullable().optional(),
   })
-  .refine(
-    (data) =>
-      data.temaPrincipalId !== undefined ||
-      data.temaConectadoIds !== undefined ||
-      data.conteudo !== undefined,
-    {
-      error: 'Informe ao menos um campo para atualizar a reflexão.',
+  .superRefine((data, ctx) => {
+    if (
+      data.temaPrincipalId === undefined &&
+      data.temaConectadoIds === undefined &&
+      data.conteudo === undefined &&
+      data.lousaId === undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Informe ao menos um campo para atualizar a reflexão.',
+      });
     }
-  )
-  .refine(
-    (data) => {
-      if (data.temaPrincipalId && data.temaConectadoIds) {
-        return !data.temaConectadoIds.includes(data.temaPrincipalId);
-      }
-      return true;
-    },
-    {
-      path: ['temaConectadoIds'],
-      error: 'O tema principal não pode estar na lista de temas conectados.',
+
+    if (
+      data.temaPrincipalId &&
+      data.temaConectadoIds &&
+      data.temaConectadoIds.includes(data.temaPrincipalId)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['temaConectadoIds'],
+        message: 'O tema principal não pode estar na lista de temas conectados.',
+      });
     }
-  );
+
+    if (data.conteudo === null && data.lousaId === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['conteudo'],
+        message: 'A reflexão deve manter ao menos um conteúdo em texto ou uma lousa.',
+      });
+    }
+  });
 
 export type CreateTemaInput = z.infer<typeof CreateTemaSchema>;
 export type UpdateTemaInput = z.infer<typeof UpdateTemaSchema>;

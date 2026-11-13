@@ -15,12 +15,14 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const query = c.get('validQuery');
 
     const { items, pagination } = await cadernoErrosService.list(
       supabase,
       user.id,
-      query
+      query,
+      logger
     );
 
     return jsonSuccess(c, items, 200, { pagination });
@@ -31,9 +33,15 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const item = await cadernoErrosService.getById(supabase, user.id, id);
+    const item = await cadernoErrosService.getById(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, item);
   }
 
@@ -42,12 +50,14 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const body = c.get('validBody');
 
     const created = await cadernoErrosService.createManual(
       supabase,
       user.id,
-      body
+      body,
+      logger
     );
     return jsonSuccess(c, created, 201);
   }
@@ -60,6 +70,7 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
     const body = c.get('validBody');
 
@@ -67,7 +78,8 @@ export class CadernoErrosController {
       supabase,
       user.id,
       id,
-      body
+      body,
+      logger
     );
     return jsonSuccess(c, updated);
   }
@@ -80,6 +92,7 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
     const body = c.get('validBody');
 
@@ -87,7 +100,8 @@ export class CadernoErrosController {
       supabase,
       user.id,
       id,
-      body
+      body,
+      logger
     );
     return jsonSuccess(c, updated);
   }
@@ -97,9 +111,15 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const updated = await cadernoErrosService.devolver(supabase, user.id, id);
+    const updated = await cadernoErrosService.devolver(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, updated);
   }
 
@@ -108,9 +128,15 @@ export class CadernoErrosController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const deleted = await cadernoErrosService.remove(supabase, user.id, id);
+    const deleted = await cadernoErrosService.remove(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, deleted);
   }
 }

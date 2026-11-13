@@ -85,6 +85,7 @@ export interface BuildUpdateCadernoErroPayloadInput {
   enunciadoCompleto?: string | null;
   linkExterno?: string | null;
   observacaoErro?: string | null;
+  lousaId?: string | null;
   temaIds: readonly string[];
 }
 
@@ -92,10 +93,10 @@ export type UpdateCadernoErroPayload = Partial<UpdateCadernoErroInput>;
 
 /**
  * Constrói o payload de PATCH `/caderno-erros/:id` estritamente alinhado à origem do registro:
- * - `SIMULADO`: envia exclusivamente `{ observacaoErro, temaIds }`.
- * - `EXTERNAL_LINK`: envia `{ codigoReferencia, linkExterno, titulo, observacaoErro, temaIds }`,
+ * - `SIMULADO`: envia exclusivamente `{ observacaoErro, temaIds, lousaId? }`.
+ * - `EXTERNAL_LINK`: envia `{ codigoReferencia, linkExterno, titulo, observacaoErro, temaIds, lousaId? }`,
  *   aplicando fallback de `titulo` para `codigoReferencia.trim()` quando vazio e omitindo `enunciadoCompleto`.
- * - `GENERIC_FULL`: envia `{ titulo, enunciadoCompleto, linkExterno, observacaoErro, temaIds }`,
+ * - `GENERIC_FULL`: envia `{ titulo, enunciadoCompleto, linkExterno, observacaoErro, temaIds, lousaId? }`,
  *   normalizando `linkExterno` vazio para `null` e omitindo `codigoReferencia`.
  */
 export function buildUpdateCadernoErroPayload(
@@ -103,11 +104,14 @@ export function buildUpdateCadernoErroPayload(
 ): UpdateCadernoErroPayload {
   const observacaoErro = normalizeNullableText(input.observacaoErro);
   const temaIds = deduplicateTemaIds(input.temaIds);
+  const lousaField =
+    input.lousaId !== undefined ? { lousaId: input.lousaId } : {};
 
   if (input.origem === 'SIMULADO') {
     return {
       observacaoErro,
       temaIds,
+      ...lousaField,
     };
   }
 
@@ -123,6 +127,7 @@ export function buildUpdateCadernoErroPayload(
       titulo,
       observacaoErro,
       temaIds,
+      ...lousaField,
     };
   }
 
@@ -132,5 +137,6 @@ export function buildUpdateCadernoErroPayload(
     linkExterno: normalizeNullableText(input.linkExterno),
     observacaoErro,
     temaIds,
+    ...lousaField,
   };
 }

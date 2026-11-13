@@ -13,9 +13,15 @@ export class ReflexoesController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const reflexao = await temasService.getReflexaoById(supabase, user.id, id);
+    const reflexao = await temasService.getReflexaoById(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, reflexao);
   }
 
@@ -24,9 +30,15 @@ export class ReflexoesController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const body = c.get('validBody');
 
-    const created = await temasService.createReflexao(supabase, user.id, body);
+    const created = await temasService.createReflexao(
+      supabase,
+      user.id,
+      body,
+      logger
+    );
     return jsonSuccess(c, created, 201);
   }
 
@@ -38,6 +50,7 @@ export class ReflexoesController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
     const body = c.get('validBody');
 
@@ -45,7 +58,8 @@ export class ReflexoesController {
       supabase,
       user.id,
       id,
-      body
+      body,
+      logger
     );
     return jsonSuccess(c, updated);
   }
@@ -55,9 +69,15 @@ export class ReflexoesController {
   ): Promise<Response> {
     const supabase = c.get('supabase');
     const user = c.get('user');
+    const logger = c.get('logger');
     const { id } = c.get('validParams');
 
-    const deleted = await temasService.deleteReflexao(supabase, user.id, id);
+    const deleted = await temasService.deleteReflexao(
+      supabase,
+      user.id,
+      id,
+      logger
+    );
     return jsonSuccess(c, deleted);
   }
 }

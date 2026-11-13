@@ -30,12 +30,22 @@ const RPC_MESSAGE_TO_ERROR: Readonly<
     code: ERROR_CODES.CADERNO_ERRO_NOT_FOUND,
     statusCode: 404,
   },
+  LOUSA_ALREADY_IN_USE: {
+    code: ERROR_CODES.LOUSA_ALREADY_IN_USE,
+    statusCode: 409,
+  },
 };
 
 function resolveForeignKeyNotFoundCode(
   combinedText: string,
   fallbackNotFoundCode: ErrorCode
 ): ErrorCode {
+  if (
+    combinedText.includes('table "lousas"') ||
+    combinedText.includes('_lousa_id_fkey')
+  ) {
+    return ERROR_CODES.LOUSA_NOT_FOUND;
+  }
   if (
     combinedText.includes('table "temas"') ||
     combinedText.includes('_tema_id_fkey') ||
@@ -108,6 +118,13 @@ export function mapSupabaseError(
     }
 
     case '23505': {
+      if (
+        combined.includes('lousa_already_in_use') ||
+        combined.includes('idx_reflexoes_lousa_id_unique') ||
+        combined.includes('idx_caderno_erros_lousa_id_unique')
+      ) {
+        return new AppError(ERROR_CODES.LOUSA_ALREADY_IN_USE, 409);
+      }
       if (
         combined.includes('idx_temas_user_lower_nome_unique') ||
         combined.includes('temas')
@@ -235,6 +252,32 @@ export function mapSupabaseError(
           },
         ]);
       }
+      if (combined.includes('reflexoes_conteudo_ou_lousa_required')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'conteudo',
+            message: 'Informe um texto de reflexão ou anexe uma lousa.',
+          },
+        ]);
+      }
+      if (combined.includes('reflexoes_conteudo_not_blank_when_present')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'conteudo',
+            message: 'O conteúdo da reflexão não pode estar em branco.',
+          },
+        ]);
+      }
+      if (combined.includes('lousas_total_size_within_3mib')) {
+        return new AppError(ERROR_CODES.LOUSA_TOO_LARGE, 413);
+      }
+      if (
+        combined.includes('lousas_preview_mime_allowed') ||
+        combined.includes('lousas_sizes_positive') ||
+        combined.includes('lousas_storage_path_not_blank')
+      ) {
+        return new AppError(ERROR_CODES.LOUSA_INVALID_PAYLOAD, 400);
+      }
       return new AppError(ERROR_CODES.VALIDATION_ERROR, 400);
     }
 
@@ -296,8 +339,11 @@ export function isStorageNotFoundError(error: SupabaseStorageErrorLike): boolean
   );
 }
 
+export type StorageErrorContext = 'simulado_pdf' | 'lousa';
+
 export function mapSupabaseStorageError(
-  error: SupabaseStorageErrorLike
+  error: SupabaseStorageErrorLike,
+  context: StorageErrorContext = 'simulado_pdf'
 ): AppError {
   const status = error.status;
   const statusCode = (error.statusCode ?? '').trim();
@@ -305,7 +351,12 @@ export function mapSupabaseStorageError(
   const message = (error.message ?? '').toLowerCase();
 
   if (isStorageNotFoundError(error)) {
-    return new AppError(ERROR_CODES.SIMULADO_PDF_NOT_FOUND, 404);
+    return new AppError(
+      context === 'lousa'
+        ? ERROR_CODES.LOUSA_NOT_FOUND
+        : ERROR_CODES.SIMULADO_PDF_NOT_FOUND,
+      404
+    );
   }
 
   if (
@@ -317,7 +368,12 @@ export function mapSupabaseStorageError(
     message.includes('exceeded the maximum') ||
     message.includes('file size limit')
   ) {
-    return new AppError(ERROR_CODES.SIMULADO_PDF_TOO_LARGE, 413);
+    return new AppError(
+      context === 'lousa'
+        ? ERROR_CODES.LOUSA_TOO_LARGE
+        : ERROR_CODES.SIMULADO_PDF_TOO_LARGE,
+      413
+    );
   }
 
   if (
@@ -348,7 +404,12 @@ export function mapSupabaseStorageError(
     message.includes('mime type') ||
     message.includes('invalid file')
   ) {
-    return new AppError(ERROR_CODES.SIMULADO_PDF_INVALID_TYPE, 400);
+    return new AppError(
+      context === 'lousa'
+        ? ERROR_CODES.LOUSA_INVALID_PAYLOAD
+        : ERROR_CODES.SIMULADO_PDF_INVALID_TYPE,
+      400
+    );
   }
 
   return new AppError(ERROR_CODES.INTERNAL_SERVER_ERROR, 500);

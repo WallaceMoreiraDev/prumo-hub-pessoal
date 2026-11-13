@@ -29,6 +29,7 @@ import {
   isStorageNotFoundError,
   mapSupabaseStorageError,
 } from '../../utils/supabaseErrorMapper';
+import { lousasService } from '../lousas/lousas.service';
 import { unwrapSingleRelation } from '../temas/temas.mapper';
 import {
   mapSimuladoDetalheDto,
@@ -421,6 +422,13 @@ export class SimuladosService {
     userId: string,
     id: string
   ): Promise<{ id: string }> {
+    const linkedLousasToClean =
+      await simuladosRepository.findLinkedCadernoLousasBySimuladoId(
+        supabase,
+        userId,
+        id
+      );
+
     const deleted = await simuladosRepository.deleteSimulado(
       supabase,
       userId,
@@ -440,6 +448,14 @@ export class SimuladosService {
           userId,
           reason: 'delete-simulado',
         }
+      );
+    }
+
+    if (linkedLousasToClean.length > 0) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        linkedLousasToClean,
+        logger
       );
     }
 
@@ -826,7 +842,8 @@ export class SimuladosService {
     supabase: AppSupabaseClient,
     userId: string,
     simuladoId: string,
-    questaoId: string
+    questaoId: string,
+    logger?: EdgeLogger
   ): Promise<{ id: string }> {
     const existing = await this.resolveExistingSimulado(
       supabase,
@@ -836,6 +853,13 @@ export class SimuladosService {
     if (existing.status !== 'PREPARACAO') {
       throw new AppError(ERROR_CODES.SIMULADO_INVALID_STATUS_TRANSITION, 409);
     }
+
+    const linkedLousasToClean =
+      await simuladosRepository.findLinkedCadernoLousasByQuestaoIds(
+        supabase,
+        userId,
+        [questaoId]
+      );
 
     const deleted = await simuladosRepository.deleteQuestao(
       supabase,
@@ -847,6 +871,14 @@ export class SimuladosService {
       throw new AppError(ERROR_CODES.SIMULADO_QUESTAO_NOT_FOUND, 404);
     }
 
+    if (linkedLousasToClean.length > 0) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        linkedLousasToClean,
+        logger
+      );
+    }
+
     return { id: deleted.id };
   }
 
@@ -855,7 +887,8 @@ export class SimuladosService {
     userId: string,
     simuladoId: string,
     questaoId: string,
-    input: ClassificarQuestaoSimuladoInput
+    input: ClassificarQuestaoSimuladoInput,
+    logger?: EdgeLogger
   ): Promise<SimuladoQuestaoDto> {
     const existing = await this.resolveExistingSimulado(
       supabase,
@@ -876,6 +909,15 @@ export class SimuladosService {
       throw new AppError(ERROR_CODES.SIMULADO_QUESTAO_NOT_FOUND, 404);
     }
 
+    const linkedLousasToClean =
+      input.resultado === 'ACERTEI'
+        ? await simuladosRepository.findLinkedCadernoLousasByQuestaoIds(
+            supabase,
+            userId,
+            [questaoId]
+          )
+        : [];
+
     const uniqueTemaIds = [...new Set(input.temaIds)];
     const observacaoPosRevisao =
       input.resultado === 'ACERTEI' ? null : input.observacaoPosRevisao;
@@ -891,6 +933,14 @@ export class SimuladosService {
         observacaoPosRevisao,
       }
     );
+
+    if (input.resultado === 'ACERTEI' && linkedLousasToClean.length > 0) {
+      await lousasService.removeLousaFilesBestEffort(
+        supabase,
+        linkedLousasToClean,
+        logger
+      );
+    }
 
     return mapSimuladoQuestaoDto(hydratedRow);
   }

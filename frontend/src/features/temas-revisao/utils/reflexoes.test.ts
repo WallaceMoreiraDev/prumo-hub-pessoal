@@ -30,6 +30,8 @@ const CONEXAO_FIXTURE: ReflexaoDto = {
   temaPrincipal: TEMA_DIJKSTRA,
   temasConectados: [TEMA_BFS, TEMA_ZERO_ONE_BFS],
   conteudo: 'Comparação de pesos uniformes vs pesos não-negativos.',
+  lousaId: null,
+  lousa: null,
   createdAt: '2026-11-10T10:00:00.000Z',
   updatedAt: '2026-11-10T10:00:00.000Z',
 };

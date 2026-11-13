@@ -6,6 +6,10 @@ import type {
   TemaListItemDto,
   TemaSummaryDto,
 } from '@shared/types/temas.types';
+import {
+  mapLousaSummaryDto,
+  type LousaRelationRow,
+} from '../lousas/lousas.mapper';
 
 export type TemaRow = Tables<'temas'>;
 export type ReflexaoRow = Tables<'reflexoes'>;
@@ -22,6 +26,7 @@ export interface ReflexaoConectadoJoinRow {
 export interface ReflexaoWithRelationsRow extends ReflexaoRow {
   tema_principal: TemaSummaryRow | TemaSummaryRow[] | null;
   reflexao_temas_conectados: ReflexaoConectadoJoinRow[] | null;
+  lousa: LousaRelationRow | LousaRelationRow[] | null;
 }
 
 export function unwrapSingleRelation<T>(
@@ -86,7 +91,10 @@ export function mapTemaListItemDto(
   };
 }
 
-export function mapReflexaoDto(row: ReflexaoWithRelationsRow): ReflexaoDto {
+export function mapReflexaoDto(
+  row: ReflexaoWithRelationsRow,
+  previewSignedUrlByLousaId?: ReadonlyMap<string, string | null>
+): ReflexaoDto {
   const temaPrincipalRow = unwrapSingleRelation(row.tema_principal);
 
   const temaPrincipal: TemaSummaryDto = temaPrincipalRow
@@ -109,6 +117,13 @@ export function mapReflexaoDto(row: ReflexaoWithRelationsRow): ReflexaoDto {
   const temasConectados = Array.from(conectadosMap.values()).sort(
     compareTemaByNome
   );
+  const lousaRow = unwrapSingleRelation(row.lousa);
+  const lousa = lousaRow
+    ? mapLousaSummaryDto(
+        lousaRow,
+        previewSignedUrlByLousaId?.get(lousaRow.id) ?? null
+      )
+    : null;
 
   return {
     id: row.id,
@@ -117,6 +132,8 @@ export function mapReflexaoDto(row: ReflexaoWithRelationsRow): ReflexaoDto {
     temaPrincipal,
     temasConectados,
     conteudo: row.conteudo,
+    lousaId: row.lousa_id ?? null,
+    lousa,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

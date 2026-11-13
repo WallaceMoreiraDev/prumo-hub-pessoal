@@ -10,6 +10,8 @@ import {
   throwIfSupabaseError,
   type SupabaseStorageErrorLike,
 } from '../../utils/supabaseErrorMapper';
+import type { LousaRelationRow } from '../lousas/lousas.mapper';
+import type { LousaStoragePaths } from '../lousas/lousas.repository';
 import { unwrapSingleRelation } from '../temas/temas.mapper';
 import type {
   SimuladoListMetrics,
@@ -854,6 +856,71 @@ export class SimuladosRepository {
 
     throwIfSupabaseError(error, ERROR_CODES.SIMULADO_PENSAMENTO_NOT_FOUND);
     return data;
+  }
+
+  public async findLinkedCadernoLousasByQuestaoIds(
+    supabase: AppSupabaseClient,
+    userId: string,
+    questaoIds: readonly string[]
+  ): Promise<LousaStoragePaths[]> {
+    const uniqueQuestaoIds = [...new Set(questaoIds)];
+    if (uniqueQuestaoIds.length === 0) {
+      return [];
+    }
+
+    const results: LousaStoragePaths[] = [];
+    for (let i = 0; i < uniqueQuestaoIds.length; i += IN_CLAUSE_CHUNK_SIZE) {
+      const chunk = uniqueQuestaoIds.slice(i, i + IN_CLAUSE_CHUNK_SIZE);
+      const { data, error } = await supabase
+        .from('caderno_erros')
+        .select(
+          'lousa:lousas!caderno_erros_lousa_id_fkey(id, scene_storage_path, preview_storage_path)'
+        )
+        .eq('user_id', userId)
+        .in('simulado_questao_id', chunk)
+        .not('lousa_id', 'is', null);
+
+      throwIfSupabaseError(error);
+
+      for (const row of (data ?? []) as Array<{
+        lousa:
+          | Pick<LousaRelationRow, 'id' | 'scene_storage_path' | 'preview_storage_path'>
+          | Pick<LousaRelationRow, 'id' | 'scene_storage_path' | 'preview_storage_path'>[]
+          | null;
+      }>) {
+        const lousaRow = unwrapSingleRelation(row.lousa);
+        if (lousaRow) {
+          results.push({
+            id: lousaRow.id,
+            sceneStoragePath: lousaRow.scene_storage_path,
+            previewStoragePath: lousaRow.preview_storage_path,
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  public async findLinkedCadernoLousasBySimuladoId(
+    supabase: AppSupabaseClient,
+    userId: string,
+    simuladoId: string
+  ): Promise<LousaStoragePaths[]> {
+    const { data: questaoRows, error } = await supabase
+      .from('simulado_questoes')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('simulado_id', simuladoId);
+
+    throwIfSupabaseError(error);
+
+    const questaoIds = (questaoRows ?? []).map((row) => row.id);
+    return this.findLinkedCadernoLousasByQuestaoIds(
+      supabase,
+      userId,
+      questaoIds
+    );
   }
 }
 

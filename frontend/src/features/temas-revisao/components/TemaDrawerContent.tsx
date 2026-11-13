@@ -18,6 +18,7 @@ import { MarkdownMathRenderer } from '@/components/markdown/MarkdownMathRenderer
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LousaPreviewCard } from '@/features/lousas/components/LousaPreviewCard';
 import { useTemaDetailQuery } from '@/features/temas-revisao/hooks/useTemas';
 import {
   getConnectedPeerThemes,
@@ -194,7 +195,17 @@ export function TemaDrawerContent({
                     </div>
                   </div>
 
-                  <MarkdownMathRenderer content={reflexao.conteudo} />
+                  {reflexao.conteudo?.trim() ? (
+                    <MarkdownMathRenderer content={reflexao.conteudo} />
+                  ) : null}
+
+                  {reflexao.lousa ? (
+                    <LousaPreviewCard
+                      lousa={reflexao.lousa}
+                      compact
+                      title="Lousa da reflexão"
+                    />
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -290,7 +301,17 @@ export function TemaDrawerContent({
                       </div>
                     </div>
 
-                    <MarkdownMathRenderer content={conexao.conteudo} />
+                    {conexao.conteudo?.trim() ? (
+                      <MarkdownMathRenderer content={conexao.conteudo} />
+                    ) : null}
+
+                    {conexao.lousa ? (
+                      <LousaPreviewCard
+                        lousa={conexao.lousa}
+                        compact
+                        title="Lousa da conexão"
+                      />
+                    ) : null}
 
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
                       <span className="min-w-0 max-w-full truncate">

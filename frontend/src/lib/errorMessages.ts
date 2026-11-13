@@ -57,6 +57,15 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Modo de revisão inválido. Utilize Finalizado Sozinho ou Com Ajuda.',
   [ERROR_CODES.INVALID_RESULTADO]:
     'Resultado da questão inválido. Utilize Acertei, Parcial ou Errei.',
+  [ERROR_CODES.LOUSA_NOT_FOUND]: 'Lousa não encontrada.',
+  [ERROR_CODES.LOUSA_TOO_LARGE]:
+    'A lousa excedeu o limite máximo de 3 MiB (cena + preview). Reduza ou comprima imagens antes de salvar.',
+  [ERROR_CODES.LOUSA_INVALID_PAYLOAD]:
+    'Os arquivos ou dados enviados para a lousa são inválidos.',
+  [ERROR_CODES.LOUSA_ALREADY_IN_USE]:
+    'Esta lousa já está vinculada a outro registro.',
+  [ERROR_CODES.LOUSA_IN_USE]:
+    'Não é possível excluir uma lousa que ainda está vinculada a um registro.',
 };
 
 const VALID_ERROR_CODE_SET = new Set<string>(Object.values(ERROR_CODES));
