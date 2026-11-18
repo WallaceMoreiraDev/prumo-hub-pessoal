@@ -8,7 +8,9 @@ import {
   useRef,
 } from 'react';
 import {
+  CaptureUpdateAction,
   Excalidraw,
+  convertToExcalidrawElements,
   exportToBlob,
   getNonDeletedElements,
   getSceneVersion,
@@ -16,6 +18,7 @@ import {
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import '@/features/lousas/components/LousaExcalidrawCanvas.css';
+import type { ExcalidrawElementSkeleton } from '@excalidraw/excalidraw/data/transform';
 import type { OrderedExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import type {
   AppState,
@@ -34,6 +37,7 @@ import {
   measureUtf8ByteLength,
   type ValidatedLousaScene,
 } from '@/features/lousas/utils/lousaBudget';
+import type { LousaViewportOrigin } from '@/features/lousas/utils/lousaStructures';
 
 export interface LousaLiveStatus {
   sceneBytes: number;
@@ -41,8 +45,18 @@ export interface LousaLiveStatus {
   hasUnsavedChanges: boolean;
 }
 
+export type LousaStructureInput =
+  | ExcalidrawElementSkeleton[]
+  | ((origin: LousaViewportOrigin) => ExcalidrawElementSkeleton[]);
+
 export interface LousaExcalidrawCanvasHandle {
   exportPayload: () => Promise<SaveLousaPayload>;
+  getViewportCenter: () => LousaViewportOrigin;
+  insertStructure: (
+    structure: LousaStructureInput,
+    options?: { selectInserted?: boolean }
+  ) => number;
+  focusCanvas: () => void;
 }
 
 export interface LousaExcalidrawCanvasProps {
@@ -102,6 +116,20 @@ function buildSanitizedInitialData(
     },
     files: initialScene.files as BinaryFiles | undefined,
     scrollToContent: true,
+  };
+}
+
+function computeViewportCenter(appState: AppState): LousaViewportOrigin {
+  const zoomValue =
+    typeof appState.zoom?.value === 'number' && appState.zoom.value > 0
+      ? appState.zoom.value
+      : 1;
+  const width = typeof appState.width === 'number' ? appState.width : 0;
+  const height = typeof appState.height === 'number' ? appState.height : 0;
+
+  return {
+    originX: -appState.scrollX + width / (2 * zoomValue),
+    originY: -appState.scrollY + height / (2 * zoomValue),
   };
 }
 
@@ -346,6 +374,90 @@ export const LousaExcalidrawCanvas = memo(
   useImperativeHandle(
     ref,
     () => ({
+      getViewportCenter(): LousaViewportOrigin {
+        const api = apiRef.current;
+        if (!api) {
+          return { originX: 0, originY: 0 };
+        }
+        return computeViewportCenter(api.getAppState());
+      },
+      insertStructure(
+        structure: LousaStructureInput,
+        options?: { selectInserted?: boolean }
+      ): number {
+        const api = apiRef.current;
+        if (!api) {
+          return 0;
+        }
+
+        const currentAppState = api.getAppState();
+        const origin = computeViewportCenter(currentAppState);
+        const skeletons =
+          typeof structure === 'function' ? structure(origin) : structure;
+
+        if (skeletons.length === 0) {
+          return 0;
+        }
+
+        const createdElements = convertToExcalidrawElements(skeletons, {
+          regenerateIds: true,
+        });
+        if (createdElements.length === 0) {
+          return 0;
+        }
+
+        const existingElements = api.getSceneElementsIncludingDeleted();
+        const nextElements = [...existingElements, ...createdElements];
+        const selectInserted = options?.selectInserted ?? true;
+        const nextSelectedElementIds = Object.fromEntries(
+          createdElements
+            .filter((el) => !el.locked)
+            .map((el) => [el.id, true] as const)
+        );
+
+        api.updateScene({
+          elements: nextElements,
+          appState: selectInserted
+            ? {
+                selectedElementIds: nextSelectedElementIds,
+              }
+            : undefined,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+
+        const updatedAppState = api.getAppState();
+        const files = api.getFiles();
+        const signature = buildSceneSignature(nextElements, files);
+        if (initialSignatureRef.current === null) {
+          initialSignatureRef.current = '';
+        }
+
+        clearMeasurementTimer();
+        pendingMeasurementRef.current = null;
+
+        const serialized = serializeAsJSON(
+          nextElements,
+          updatedAppState,
+          files,
+          'database'
+        );
+        onStatusChange({
+          sceneBytes: measureUtf8ByteLength(serialized),
+          nonDeletedCount: getNonDeletedElements(nextElements).length,
+          hasUnsavedChanges: signature !== initialSignatureRef.current,
+        });
+
+        return createdElements.length;
+      },
+      focusCanvas(): void {
+        const excalidrawRoot =
+          containerRef.current?.querySelector<HTMLElement>('.excalidraw');
+        if (excalidrawRoot) {
+          excalidrawRoot.focus({ preventScroll: true });
+          return;
+        }
+        containerRef.current?.focus({ preventScroll: true });
+      },
       async exportPayload(): Promise<SaveLousaPayload> {
         const api = apiRef.current;
         if (!api) {
@@ -408,7 +520,7 @@ export const LousaExcalidrawCanvas = memo(
         };
       },
     }),
-    [theme]
+    [clearMeasurementTimer, onStatusChange, theme]
   );
 
   const handleExcalidrawApi = useCallback(
@@ -450,8 +562,9 @@ export const LousaExcalidrawCanvas = memo(
   return (
     <div
       ref={containerRef}
+      tabIndex={-1}
       onPointerDownCapture={handlePointerDownCapture}
-      className="h-full w-full touch-none select-none"
+      className="h-full w-full touch-none select-none outline-none"
       style={{ touchAction: 'none' }}
     >
       <Excalidraw
