@@ -19,6 +19,7 @@ import {
   PenTool,
   RefreshCw,
   Save,
+  Shapes,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,7 +40,9 @@ import { lousasApi } from '@/features/lousas/api/lousasApi';
 import type {
   LousaExcalidrawCanvasHandle,
   LousaLiveStatus,
+  LousaStructureInput,
 } from '@/features/lousas/components/LousaExcalidrawCanvas';
+import { LousaStructuresPopover } from '@/features/lousas/components/LousaStructuresPopover';
 import {
   useCreateLousaMutation,
   useUpdateLousaMutation,
@@ -89,6 +92,7 @@ export function LousaCanvasModal({
 }: LousaCanvasModalProps) {
   const isEditing = Boolean(lousaId);
   const canvasRef = useRef<LousaExcalidrawCanvasHandle | null>(null);
+  const structuresTriggerRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -103,6 +107,7 @@ export function LousaCanvasModal({
   );
   const [isReadyForCanvas, setIsReadyForCanvas] = useState(false);
   const [gridModeEnabled, setGridModeEnabled] = useState(false);
+  const [structuresOpen, setStructuresOpen] = useState(false);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null
@@ -159,6 +164,7 @@ export function LousaCanvasModal({
       setIsReadyForCanvas(false);
       setLoadError(null);
       setValidationMessage(null);
+      setStructuresOpen(false);
       setDiscardDialogOpen(false);
       setLiveStatus({
         sceneBytes: 0,
@@ -234,6 +240,13 @@ export function LousaCanvasModal({
         return;
       }
 
+      if (structuresOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setStructuresOpen(false);
+        return;
+      }
+
       const hasExcalidrawOverlay = Boolean(
         document.querySelector(
           '.excalidraw-modal-container .Modal, .excalidraw .context-menu, .excalidraw .Modal'
@@ -250,7 +263,33 @@ export function LousaCanvasModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, discardDialogOpen, handleRequestClose]);
+  }, [open, discardDialogOpen, structuresOpen, handleRequestClose]);
+
+  const handleInsertStructure = useCallback(
+    (
+      structure: LousaStructureInput,
+      feedbackLabel: string,
+      options?: { selectInserted?: boolean }
+    ) => {
+      if (!canvasRef.current || isSaving) {
+        return;
+      }
+
+      const insertedCount = canvasRef.current.insertStructure(structure, {
+        selectInserted: options?.selectInserted ?? true,
+      });
+      if (insertedCount === 0) {
+        return;
+      }
+
+      setStructuresOpen(false);
+      toast.success(feedbackLabel);
+      window.requestAnimationFrame(() => {
+        canvasRef.current?.focusCanvas();
+      });
+    },
+    [isSaving]
+  );
 
   const handleConfirmDiscard = useCallback(() => {
     setDiscardDialogOpen(false);
@@ -391,6 +430,21 @@ export function LousaCanvasModal({
                 </Button>
 
                 <Button
+                  ref={structuresTriggerRef}
+                  type="button"
+                  variant={structuresOpen ? 'secondary' : 'outline'}
+                  size="sm"
+                  aria-expanded={structuresOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => setStructuresOpen((prev) => !prev)}
+                  disabled={!isReadyForCanvas || isSaving}
+                  className="gap-1.5"
+                >
+                  <Shapes className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  <span>Estruturas</span>
+                </Button>
+
+                <Button
                   type="button"
                   size="sm"
                   onClick={() => void handleSave()}
@@ -451,6 +505,14 @@ export function LousaCanvasModal({
           </header>
 
           <div className="relative min-h-0 flex-1 bg-background">
+            <LousaStructuresPopover
+              open={structuresOpen}
+              onOpenChange={setStructuresOpen}
+              triggerRef={structuresTriggerRef}
+              disabled={!isReadyForCanvas || isSaving}
+              onInsertStructure={handleInsertStructure}
+            />
+
             {isLoadingScene ? (
               <CanvasEditorSkeleton />
             ) : loadError ? (
