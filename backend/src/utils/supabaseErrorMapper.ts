@@ -34,6 +34,18 @@ const RPC_MESSAGE_TO_ERROR: Readonly<
     code: ERROR_CODES.LOUSA_ALREADY_IN_USE,
     statusCode: 409,
   },
+  EXERCICIO_NOT_FOUND: {
+    code: ERROR_CODES.EXERCICIO_NOT_FOUND,
+    statusCode: 404,
+  },
+  TITULO_REQUIRED: {
+    code: ERROR_CODES.VALIDATION_ERROR,
+    statusCode: 400,
+  },
+  INVALID_DURACAO: {
+    code: ERROR_CODES.VALIDATION_ERROR,
+    statusCode: 400,
+  },
 };
 
 function resolveForeignKeyNotFoundCode(
@@ -45,6 +57,13 @@ function resolveForeignKeyNotFoundCode(
     combinedText.includes('_lousa_id_fkey')
   ) {
     return ERROR_CODES.LOUSA_NOT_FOUND;
+  }
+  if (
+    combinedText.includes('table "exercicios_avulsos"') ||
+    combinedText.includes('exercicio_id') ||
+    combinedText.includes('exercicio')
+  ) {
+    return ERROR_CODES.EXERCICIO_NOT_FOUND;
   }
   if (
     combinedText.includes('table "temas"') ||
@@ -121,7 +140,8 @@ export function mapSupabaseError(
       if (
         combined.includes('lousa_already_in_use') ||
         combined.includes('idx_reflexoes_lousa_id_unique') ||
-        combined.includes('idx_caderno_erros_lousa_id_unique')
+        combined.includes('idx_caderno_erros_lousa_id_unique') ||
+        combined.includes('idx_exercicios_avulsos_lousa_id_unique')
       ) {
         return new AppError(ERROR_CODES.LOUSA_ALREADY_IN_USE, 409);
       }
@@ -270,6 +290,46 @@ export function mapSupabaseError(
       }
       if (combined.includes('lousas_total_size_within_3mib')) {
         return new AppError(ERROR_CODES.LOUSA_TOO_LARGE, 413);
+      }
+      if (combined.includes('exercicios_avulsos_titulo_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'titulo',
+            message: 'O título não pode ser vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('exercicios_avulsos_duracao_positive')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'duracaoSegundos',
+            message: 'A duração não pode ser negativa.',
+          },
+        ]);
+      }
+      if (combined.includes('exercicios_avulsos_enunciado_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'enunciado',
+            message: 'O enunciado não pode ser vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('exercicios_avulsos_link_externo_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'linkExterno',
+            message: 'O link externo não pode ser vazio.',
+          },
+        ]);
+      }
+      if (combined.includes('exercicios_avulsos_observacao_not_blank')) {
+        return new AppError(ERROR_CODES.VALIDATION_ERROR, 400, [
+          {
+            path: 'observacao',
+            message: 'A observação não pode ser vazia.',
+          },
+        ]);
       }
       if (
         combined.includes('lousas_preview_mime_allowed') ||
