@@ -2,6 +2,7 @@ import { Suspense, useState } from 'react';
 import {
   BookOpen,
   BookX,
+  Clock,
   Compass,
   LogOut,
   Menu,
@@ -49,6 +50,11 @@ const NAV_ITEMS: readonly NavItem[] = [
     to: '/temas',
     label: 'Temas e Revisão',
     icon: BookOpen,
+  },
+  {
+    to: '/estudos',
+    label: 'Diário de Estudos',
+    icon: Clock,
   },
   {
     to: '/caderno-erros',

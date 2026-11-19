@@ -51,6 +51,12 @@ const SimuladoExecucaoPage = lazy(() =>
   }))
 );
 
+const EstudosPage = lazy(() =>
+  import('@/features/exercicios/EstudosPage').then((module) => ({
+    default: module.EstudosPage,
+  }))
+);
+
 export function App() {
   if (!envValidation.success) {
     return (
@@ -81,6 +87,7 @@ export function App() {
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<Navigate to="/temas" replace />} />
                     <Route path="/temas" element={<TemasRevisaoPage />} />
+                    <Route path="/estudos" element={<EstudosPage />} />
                     <Route
                       path="/caderno-erros"
                       element={<CadernoErrosPage />}

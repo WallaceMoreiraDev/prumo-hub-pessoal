@@ -113,7 +113,7 @@ export class LousasRepository {
     userId: string,
     lousaId: string
   ): Promise<boolean> {
-    const [reflexaoUsage, cadernoErroUsage] = await Promise.all([
+    const [reflexaoUsage, cadernoErroUsage, exercicioUsage] = await Promise.all([
       supabase
         .from('reflexoes')
         .select('id')
@@ -126,6 +126,12 @@ export class LousasRepository {
         .eq('user_id', userId)
         .eq('lousa_id', lousaId)
         .maybeSingle(),
+      supabase
+        .from('exercicios_avulsos')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('lousa_id', lousaId)
+        .maybeSingle(),
     ]);
 
     if (reflexaoUsage.error) {
@@ -134,8 +140,15 @@ export class LousasRepository {
     if (cadernoErroUsage.error) {
       throw mapSupabaseError(cadernoErroUsage.error);
     }
+    if (exercicioUsage.error) {
+      throw mapSupabaseError(exercicioUsage.error);
+    }
 
-    return reflexaoUsage.data !== null || cadernoErroUsage.data !== null;
+    return (
+      reflexaoUsage.data !== null ||
+      cadernoErroUsage.data !== null ||
+      exercicioUsage.data !== null
+    );
   }
 
   async uploadFile(

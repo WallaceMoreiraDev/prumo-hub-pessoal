@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { ReviewMode } from '@shared/types/enums.types';
 import type {
   ReflexaoDto,
@@ -13,6 +14,7 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Loader2,
   MessageSquarePlus,
   Plus,
@@ -20,6 +22,7 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
+  Timer,
   X,
 } from 'lucide-react';
 import {
@@ -48,6 +51,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EstudosResumoView } from '@/features/exercicios/components/EstudosResumoView';
+import { ExercicioExecucaoModal } from '@/features/exercicios/components/ExercicioExecucaoModal';
 import { RegistrarPraticaDialog } from '@/features/temas-revisao/components/RegistrarPraticaDialog';
 import { ReflexaoFormDialog } from '@/features/temas-revisao/components/ReflexaoFormDialog';
 import { TemaFormDialog } from '@/features/temas-revisao/components/TemaFormDialog';
@@ -109,6 +114,27 @@ function TemasListSkeleton() {
 }
 
 export function TemasRevisaoPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'estudos' ? 'estudos' : 'radar';
+
+  const setActiveTab = useCallback(
+    (tab: 'radar' | 'estudos') => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === 'estudos') {
+            next.set('tab', 'estudos');
+          } else {
+            next.delete('tab');
+          }
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [reviewModeFilter, setReviewModeFilter] = useState<
@@ -124,6 +150,7 @@ export function TemasRevisaoPage() {
   );
 
   // Estados de modais e confirmações
+  const [novoExercicioOpen, setNovoExercicioOpen] = useState(false);
   const [temaDialogOpen, setTemaDialogOpen] = useState(false);
   const [editingTema, setEditingTema] = useState<TemaListItemDto | null>(null);
 
@@ -358,6 +385,16 @@ export function TemasRevisaoPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end">
           <Button
             type="button"
+            variant="default"
+            onClick={() => setNovoExercicioOpen(true)}
+            className="w-full gap-2 sm:w-auto"
+          >
+            <Timer className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+            <span>Novo Exercício</span>
+          </Button>
+
+          <Button
+            type="button"
             variant="outline"
             onClick={openCreateTema}
             className="w-full gap-2 sm:w-auto"
@@ -391,8 +428,41 @@ export function TemasRevisaoPage() {
         </div>
       </header>
 
-      <section
-        aria-label="Filtros e ordenação de temas"
+      <div className="flex border-b border-border/80">
+        <button
+          type="button"
+          onClick={() => setActiveTab('radar')}
+          className={cn(
+            'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors',
+            activeTab === 'radar'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <BookOpen className="h-4 w-4" strokeWidth={1.75} />
+          <span>Radar de Temas</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('estudos')}
+          className={cn(
+            'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors',
+            activeTab === 'estudos'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Clock className="h-4 w-4" strokeWidth={1.75} />
+          <span>Diário de Estudos</span>
+        </button>
+      </div>
+
+      {activeTab === 'estudos' ? (
+        <EstudosResumoView />
+      ) : (
+        <>
+          <section
+            aria-label="Filtros e ordenação de temas"
         className="relative overflow-hidden rounded-2xl border border-border bg-card p-3 sm:p-4"
       >
         <ListUpdatingTopBar isUpdating={isUpdatingList} />
@@ -680,6 +750,13 @@ export function TemasRevisaoPage() {
           ) : null}
         </div>
       )}
+        </>
+      )}
+
+      <ExercicioExecucaoModal
+        open={novoExercicioOpen}
+        onOpenChange={setNovoExercicioOpen}
+      />
 
       <TemaFormDialog
         open={temaDialogOpen}

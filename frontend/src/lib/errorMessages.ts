@@ -66,6 +66,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
     'Esta lousa já está vinculada a outro registro.',
   [ERROR_CODES.LOUSA_IN_USE]:
     'Não é possível excluir uma lousa que ainda está vinculada a um registro.',
+  [ERROR_CODES.EXERCICIO_NOT_FOUND]:
+    'Exercício ou sessão de estudo não encontrado.',
 };
 
 const VALID_ERROR_CODE_SET = new Set<string>(Object.values(ERROR_CODES));

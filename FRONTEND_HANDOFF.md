@@ -11,6 +11,7 @@ Este documento registra as entregas da **Backend AI** (rotas, contratos em `/sha
 - [x] **Módulo 2: Caderno de Erros (Listagem, Cadastro Manual Restrito e Revisão)**
 - [x] **Módulo 3: Temas, Revisão e Conexões Bidirecionais** *(entregue primeiro conforme ordem acordada para o backend)*
 - [x] **Módulo 4: Lousas Universal (`/api/v1/lousas`) e Integração em Temas/Reflexões, Caderno de Erros e Cascata de Simulados**
+- [x] **Módulo 5: Exercícios Avulsos, Sessões de Estudo, Resumo Temporal e Relatório para IA**
 
 ---
 
@@ -97,6 +98,7 @@ Definidos em `ERROR_CODES` no arquivo [`/shared/types/api.types.ts`](./shared/ty
 | `LOUSA_INVALID_PAYLOAD` | `400` | Multipart ausente/malformado, JSON da cena sem `elements`, MIME inválido ou magic bytes divergentes |
 | `LOUSA_ALREADY_IN_USE` | `409` | Tentativa de vincular uma lousa já associada a outra reflexão ou item do caderno de erros |
 | `LOUSA_IN_USE` | `409` | Tentativa de excluir diretamente (`DELETE /api/v1/lousas/:id`) uma lousa que ainda está vinculada |
+| `EXERCICIO_NOT_FOUND` | `404` | Exercício avulso não encontrado para o usuário autenticado |
 
 > **Atenção Frontend (`errorMessages.ts`):** Os 5 códigos `LOUSA_*` foram adicionados a `ERROR_CODES` (`ErrorCode`). É necessário mapear essas chaves em `frontend/src/lib/errorMessages.ts` e incluir `lousaId: null, lousa: null` nos mocks de `ReflexaoDto` e `CadernoErroDto` nos testes do Frontend (`DrawersStickyCollapse.test.tsx`, `ListUpdatingTransitions.test.tsx`, `reflexoes.test.ts`).
 
@@ -154,6 +156,7 @@ Todos os contratos são importáveis de `@shared` (ou caminhos específicos em `
 - [`simulados.types.ts`](./shared/types/simulados.types.ts): `SIMULADO_SORT_OPTIONS`, `SimuladoSortBy`, `SIMULADO_PDF_MAX_SIZE_BYTES` (`20 MiB`), `SIMULADO_PDF_SIGNED_URL_TTL_SECONDS` (`3600`), `SimuladoPensamentoDto`, `SimuladoQuestaoDto`, `SimuladoDto`, `SimuladoListItemDto`, `SimuladoDetalheDto`, `SimuladoPdfSignedUrlDto`, `SimuladoExportIaDto`.
 - [`caderno-erros.types.ts`](./shared/types/caderno-erros.types.ts): `CADERNO_ERRO_SORT_OPTIONS`, `CadernoErroSortBy`, `CadernoErroSimuladoMetaDto`, `CadernoErroDto` (`lousaId: string | null`, `lousa: LousaSummaryDto | null`).
 - [`lousas.types.ts`](./shared/types/lousas.types.ts): `LOUSA_MAX_TOTAL_SIZE_BYTES` (`3 MiB` / `3145728`), `LOUSA_SIGNED_URL_TTL_SECONDS` (`3600`), `LOUSA_PREVIEW_MIME_TYPES` (`['image/webp', 'image/png']`), `LousaPreviewMimeType`, `LousaSummaryDto`, `LousaDto`, `LousaSignedUrlsDto`.
+- [`exercicios.types.ts`](./shared/types/exercicios.types.ts): `EXERCICIO_SORT_OPTIONS`, `ExercicioSortBy`, `ExercicioAvulsoSummaryDto`, `ExercicioAvulsoDetalheDto`, `EstudoResumoTemaDto`, `EstudoItemTipo` (`'SIMULADO' | 'EXERCICIO_AVULSO' | 'CADERNO_ERROS' | 'REVISAO_AVULSA'`), `EstudoResumoItemDto`, `EstudosResumoPeriodoDto`, `EstudoExportIaDto`.
 
 #### Schemas Zod (`/shared/schemas/`)
 - [`common.schema.ts`](./shared/schemas/common.schema.ts): `UuidSchema`, `UuidParamSchema`, `PaginationQuerySchema` (`page` `1..10000`, `limit` `1..100`, `search` max `120`), `HttpUrlSchema` (`trim()` antes de validar URL `http`/`https`, max `2048`).
@@ -161,6 +164,7 @@ Todos os contratos são importáveis de `@shared` (ou caminhos específicos em `
 - [`simulados.schema.ts`](./shared/schemas/simulados.schema.ts): `CreateSimuladoSchema` (`duracaoConfiguradaSegundos` inteiro `1..86400`), `UpdateSimuladoSchema`, `SimuladosQuerySchema` (`page`, `limit`, `search`, `status`, `sortBy`), `SimuladoQuestaoParamsSchema`, `SimuladoPensamentoParamsSchema`, `CreateSimuladoQuestaoSchema`, `UpdateSimuladoQuestaoSchema`, `CreateSimuladoPensamentoSchema`, `UpdateSimuladoPensamentoSchema`, `FinalizarSimuladoSchema`, `ClassificarQuestaoSimuladoSchema` (`temaIds` padrão `[]`, rejeita `observacaoPosRevisao` preenchida quando `resultado === 'ACERTEI'` e normaliza para `null`).
 - [`caderno-erros.schema.ts`](./shared/schemas/caderno-erros.schema.ts): `CreateManualErrorSchema` (`z.discriminatedUnion('origem', ...)` aceitando **exclusivamente** `EXTERNAL_LINK` — normalizando `titulo: ""` para `undefined` — e `GENERIC_FULL`, ambos com `lousaId?: string | null`), `UpdateCadernoErroSchema` (`lousaId?: string | null` suportado nas 3 origens), `CadernoErrosQuerySchema` (`page`, `limit`, `search`, `status`, `temaId`, `origem`, `sortBy`), `RevisarCadernoErroSchema`.
 - [`lousas.schema.ts`](./shared/schemas/lousas.schema.ts): `LousaPreviewMimeSchema`, `LousaParamSchema`, `LousaSceneSchema` (`elements` array obrigatório + `type?: 'excalidraw'`), `LousaParamInput`, `LousaScenePayload`.
+- [`exercicios.schema.ts`](./shared/schemas/exercicios.schema.ts): `CreateExercicioAvulsoSchema` (`duracaoSegundos` inteiro `>= 0`, `temaIds` array `min(1)` com deduplicação, `lousaId?: string | null`), `UpdateExercicioAvulsoSchema`, `ListExerciciosQuerySchema` (`page`, `limit`, `search`, `temaId`, `desfecho`, `sortBy`), `EstudosResumoQuerySchema` (`periodo: 'dia' | 'semana' | 'personalizado'`, `dataInicio`, `dataFim`).
 
 ---
 
@@ -894,3 +898,278 @@ Exclui uma lousa **órfã** (não vinculada a nenhuma reflexão nem registro do 
 - **Params:** `id` (`UUID`)
 - **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
 - **Erros:** `404 LOUSA_NOT_FOUND`, `409 LOUSA_IN_USE`.
+
+---
+
+## Módulo 5: Exercícios Avulsos, Sessões de Estudo, Resumo Temporal e Exportação IA (`/api/v1/exercicios`)
+
+Todas as rotas abaixo exigem autenticação via `Authorization: Bearer <token>` (isolamento multi-usuário estrito por RLS).
+
+### 1. Regras de Negócio & Dicas de UI
+
+- **Exercícios Avulsos vs. Simulados vs. Caderno de Erros:**
+  - Registra a resolução avulsa de um problema ou sessão de estudo prática (ex.: uma questão do Codeforces, LeetCode, Beecrowd ou prova passada).
+  - Campos:
+    - `titulo`: obrigatório (trim, 1..200 caracteres).
+    - `temaIds`: obrigatório ao menos 1 tema (`min(1)`), deduplicado automaticamente pelo backend.
+    - `enunciado`: opcional (texto livre do enunciado/problema).
+    - `linkExterno`: opcional (URL `http` ou `https`, max 2048 chars).
+    - `observacao`: opcional (anotações da resolução, complexidade, armadilhas).
+    - `duracaoSegundos`: obrigatório (inteiro `>= 0`, tempo cronometrado ou estimado de resolução).
+    - `desfecho`: opcional (`'SOLO' | 'HELP' | null`).
+    - `lousaId`: opcional (`UUID | null`), suporta lousa de rascunho com exclusividade 1:1.
+- **Efeito Transacional nos Temas (`last_reviewed_at` e `last_review_mode`):**
+  - Quando um exercício é criado ou atualizado com `desfecho` (`'SOLO'` ou `'HELP'`), a RPC transacional `rpc_salvar_exercicio_avulso` atualiza imediatamente `temas.last_reviewed_at = now()` e `temas.last_review_mode = desfecho` para todos os temas vinculados.
+  - Caso `desfecho` seja nulo/omitido, os temas vinculados **não** têm suas datas de revisão alteradas.
+- **Gerenciamento de Lousa Universal (Storage):**
+  - O exercício pode vincular uma lousa criada previamente via `POST /api/v1/lousas`.
+  - Ao excluir um exercício que possui lousa, a lousa e seus arquivos no Storage são removidos em cascata automaticamente.
+  - Ao atualizar o exercício substituindo ou removendo `lousaId`, a lousa anterior órfã é excluída do Storage.
+- **Resumo Temporal Unificado (`GET /api/v1/exercicios/resumo`):**
+  - Agrega **sessões de estudo** (exercícios avulsos) e **reflexões/conexões** registradas no período selecionado:
+    1. `EXERCICIO`: Exercícios avulsos (`duracao_segundos`, `desfecho`).
+    2. `REFLEXAO`: Reflexões registradas com o tema principal e temas conectados (e lousa se houver).
+  - Modos de período (`periodo`):
+    - `dia`: dia de referência especificado em `data` (`YYYY-MM-DD`, padrão: data atual em UTC).
+    - `semana`: semana de segunda-feira a domingo que compreende a `data` de referência (ou data atual UTC).
+    - `custom`: intervalo customizado especificado por `dataInicio` e `dataFim` (ambos obrigatórios em ISO 8601 UTC).
+  - O retorno calcula:
+    - `tempoTotalSegundos`: soma total de tempo dedicado a exercícios no período.
+    - `totalExercicios`: contagem total de exercícios concluídos.
+    - `totalSolo`, `totalHelp`, `totalSemDesfecho`: contagem segmentada por desfecho.
+    - `totalReflexoes`: contagem total de reflexões registradas no período.
+    - `temasAbordados`: distribuição agregada por tema (`temaId`, `nomeTema`, `totalExercicios`, `totalReflexoes`, `tempoTotalSegundos`, `desfechos`), ordenada decrescente por `tempoTotalSegundos`.
+    - `itens`: histórico cronológico decrescente de todas as atividades realizadas no período (`tipo`, `id`, `titulo`, `createdAt`, `duracaoSegundos`, `desfecho`, `temas`, `hasLousa`).
+- **Exportação para IA (`GET /api/v1/exercicios/export-ia`):**
+  - Gera um relatório completo em Markdown estruturado pronto para envio a LLMs ou análise de desempenho, com métricas consolidadas de produtividade, tabela por temas e lista cronológica detalhada.
+  - Obedece estritamente às diretrizes de design: zero emojis, temas limpos sem `#`, sem links soltos desnecessários.
+- **Invalidação Recomendada no TanStack Query:**
+  - `['exercicios']`: queries de listagem com filtros.
+  - `['exercicios', id]`: detalhes de um exercício específico.
+  - `['estudos-resumo']`: dados de resumo temporal e gráficos.
+  - Ao criar, editar ou excluir um exercício com `desfecho`:
+    ```ts
+    queryClient.invalidateQueries({ queryKey: ['exercicios'] });
+    queryClient.invalidateQueries({ queryKey: ['estudos-resumo'] });
+    queryClient.invalidateQueries({ queryKey: ['temas'] }); // se desfecho !== null
+    ```
+
+---
+
+### 2. Endpoints (`/api/v1/exercicios`)
+
+#### `POST /api/v1/exercicios`
+Cria um novo exercício avulso e atualiza atomicamente os temas vinculados se `desfecho` for informado.
+
+- **Payload (`CreateExercicioAvulsoSchema`):**
+  ```json
+  {
+    "titulo": "Codeforces 1899A - Game with Integers",
+    "temaIds": ["550e8400-e29b-41d4-a716-446655440001"],
+    "enunciado": "Two players play a game with an integer n...",
+    "linkExterno": "https://codeforces.com/problemset/problem/1899/A",
+    "observacao": "Problema resolvido com matemática modular e análise de paridade.",
+    "duracaoSegundos": 1200,
+    "desfecho": "SOLO",
+    "lousaId": null
+  }
+  ```
+- **Resposta `201` (`ApiSuccessResponse<ExercicioAvulsoDetalheDto>`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "770e8400-e29b-41d4-a716-446655440010",
+      "titulo": "Codeforces 1899A - Game with Integers",
+      "enunciado": "Two players play a game with an integer n...",
+      "linkExterno": "https://codeforces.com/problemset/problem/1899/A",
+      "observacao": "Problema resolvido com matemática modular e análise de paridade.",
+      "duracaoSegundos": 1200,
+      "desfecho": "SOLO",
+      "lousaId": null,
+      "lousa": null,
+      "temas": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440001",
+          "nome": "Teoria dos Números"
+        }
+      ],
+      "createdAt": "2026-11-18T20:00:00.000Z",
+      "updatedAt": "2026-11-18T20:00:00.000Z"
+    }
+  }
+  ```
+- **Erros:** `400 VALIDATION_ERROR`, `404 TEMA_NOT_FOUND`, `404 LOUSA_NOT_FOUND`, `409 LOUSA_ALREADY_IN_USE`.
+
+#### `GET /api/v1/exercicios`
+Lista exercícios avulsos com paginação, busca e filtros.
+
+- **Query Params (`ListExerciciosQuerySchema`):**
+  - `page`: número da página (padrão `1`).
+  - `limit`: itens por página (padrão `20`, máx `100`).
+  - `search`: busca textual case-insensitive no título e enunciado.
+  - `temaId`: filtra exercícios que contenham o tema especificado (`UUID`).
+  - `desfecho`: `'SOLO' | 'HELP'`.
+  - `sortBy`: ordenação (`'recentes'` [padrão: `created_at desc`], `'antigos'` [`created_at asc`], `'duracao_desc'` [`duracao_segundos desc`], `'duracao_asc'` [`duracao_segundos asc`], `'titulo_asc'` [`titulo asc`]).
+- **Resposta `200` (`ApiSuccessResponse<ExercicioAvulsoSummaryDto[]>` com paginação):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "770e8400-e29b-41d4-a716-446655440010",
+        "titulo": "Codeforces 1899A - Game with Integers",
+        "duracaoSegundos": 1200,
+        "desfecho": "SOLO",
+        "temas": [
+          {
+            "id": "550e8400-e29b-41d4-a716-446655440001",
+            "nome": "Teoria dos Números"
+          }
+        ],
+        "temLousa": false,
+        "lousaPreviewSignedUrl": null,
+        "createdAt": "2026-11-18T20:00:00.000Z",
+        "updatedAt": "2026-11-18T20:00:00.000Z"
+      }
+    ],
+    "meta": {
+      "pagination": {
+        "page": 1,
+        "limit": 20,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  }
+  ```
+
+#### `GET /api/v1/exercicios/resumo`
+Calcula o consolidado temporal de estudos no período selecionado (dia, semana ou custom), agregando exercícios avulsos e reflexões/conexões registradas na janela temporal.
+
+- **Query Params (`EstudosResumoQuerySchema`):**
+  - `periodo`: `'dia' | 'semana' | 'custom'` (padrão `'dia'`).
+  - `data`: data no formato `YYYY-MM-DD` (opcional; define o dia de referência em UTC para o período `'dia'`).
+  - `dataInicio`: obrigatório se `periodo === 'custom'` (ISO 8601 UTC).
+  - `dataFim`: obrigatório se `periodo === 'custom'` (ISO 8601 UTC).
+- **Resposta `200` (`ApiSuccessResponse<EstudosResumoPeriodoDto>`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "periodo": "semana",
+      "dataReferencia": "2026-11-18",
+      "dataInicioIso": "2026-11-16T00:00:00.000Z",
+      "dataFimIso": "2026-11-22T23:59:59.999Z",
+      "tempoTotalSegundos": 7200,
+      "totalExercicios": 4,
+      "totalSolo": 3,
+      "totalHelp": 1,
+      "totalSemDesfecho": 0,
+      "totalReflexoes": 2,
+      "temasAbordados": [
+        {
+          "temaId": "550e8400-e29b-41d4-a716-446655440001",
+          "nomeTema": "Programação Dinâmica",
+          "totalExercicios": 3,
+          "totalReflexoes": 1,
+          "tempoTotalSegundos": 5400,
+          "desfechos": {
+            "solo": 2,
+            "help": 1,
+            "semDesfecho": 0
+          }
+        },
+        {
+          "temaId": "550e8400-e29b-41d4-a716-446655440002",
+          "nomeTema": "Grafos",
+          "totalExercicios": 1,
+          "totalReflexoes": 1,
+          "tempoTotalSegundos": 1800,
+          "desfechos": {
+            "solo": 1,
+            "help": 0,
+            "semDesfecho": 0
+          }
+        }
+      ],
+      "itens": [
+        {
+          "tipo": "EXERCICIO",
+          "id": "770e8400-e29b-41d4-a716-446655440010",
+          "titulo": "Codeforces 1899A - Game with Integers",
+          "createdAt": "2026-11-18T20:00:00.000Z",
+          "duracaoSegundos": 1200,
+          "desfecho": "SOLO",
+          "temas": [
+            {
+              "id": "550e8400-e29b-41d4-a716-446655440001",
+              "nome": "Programação Dinâmica",
+              "lastReviewedAt": "2026-11-18T20:00:00.000Z",
+              "lastReviewMode": "SOLO"
+            }
+          ],
+          "hasLousa": false
+        },
+        {
+          "tipo": "REFLEXAO",
+          "id": "880e8400-e29b-41d4-a716-446655440020",
+          "titulo": "Modelagem de estados em DP com memoization",
+          "createdAt": "2026-11-18T18:00:00.000Z",
+          "temas": [
+            {
+              "id": "550e8400-e29b-41d4-a716-446655440001",
+              "nome": "Programação Dinâmica",
+              "lastReviewedAt": "2026-11-18T20:00:00.000Z",
+              "lastReviewMode": "SOLO"
+            }
+          ],
+          "hasLousa": true
+        }
+      ]
+    }
+  }
+  ```
+
+#### `GET /api/v1/exercicios/export-ia`
+Gera relatório em Markdown estruturado para consumo por IAs generativas e análise técnica de sessões de estudo.
+
+- **Query Params:** Mesmos parâmetros de `GET /api/v1/exercicios/resumo` (`periodo`, `data`, `dataInicio`, `dataFim`).
+- **Resposta `200` (`ApiSuccessResponse<EstudoExportIaDto>`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "periodo": "semana",
+      "dataReferencia": "2026-11-18",
+      "dataInicioIso": "2026-11-16T00:00:00.000Z",
+      "dataFimIso": "2026-11-22T23:59:59.999Z",
+      "tempoTotalSegundos": 7200,
+      "totalItens": 6,
+      "markdown": "# Relatório de Estudos — Semana de 2026-11-16 a 2026-11-22\n\n> Gerado em: 2026-11-18T22:00:00.000Z\n> Janela temporal (UTC): 2026-11-16T00:00:00.000Z até 2026-11-22T23:59:59.999Z\n\n## Métricas Gerais de Produtividade\n\n- **Tempo Total Dedicado:** [02:00:00] (120 min)\n- **Total de Exercícios Concluídos:** 4\n- **Proporção Solo vs Ajuda:** 3 Solo (75%) | 1 Com Ajuda (25%) | 0 Sem desfecho (0%)\n- **Total de Reflexões / Conexões Registradas:** 2\n\n## Foco por Tema\n\n| Tema | Exercícios | Reflexões | Tempo Total | Solo | Ajuda |\n| --- | --- | --- | --- | --- | --- |\n| Programação Dinâmica | 3 | 1 | 01:30:00 | 2 | 1 |\n| Grafos | 1 | 1 | 00:30:00 | 1 | 0 |\n\n## Atividades Realizadas (Cronológico)\n\n- [EXERCICIO] **Codeforces 1899A - Game with Integers** (2026-11-18T20:00:00.000Z)\n  - Duração: [00:20:00] | Desfecho: SOLO | Temas: Programação Dinâmica\n- [REFLEXAO] **Modelagem de estados em DP com memoization** (2026-11-18T18:00:00.000Z)\n  - Temas: Programação Dinâmica | Lousa: Sim\n"
+    }
+  }
+  ```
+
+#### `GET /api/v1/exercicios/:id`
+Retorna os detalhes completos do exercício avulso, incluindo temas vinculados e URLs assinadas de lousa (se houver).
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `ApiSuccessResponse<ExercicioAvulsoDetalheDto>`
+- **Erros:** `404 EXERCICIO_NOT_FOUND`.
+
+#### `PATCH /api/v1/exercicios/:id`
+Atualiza parcialmente os campos do exercício avulso. Se `desfecho` ou `temaIds` forem alterados e `desfecho` estiver presente (`SOLO` ou `HELP`), atualiza a data de última revisão dos temas. Se a lousa for substituída ou removida (`lousaId: null`), limpa a lousa anterior do Storage.
+
+- **Params:** `id` (`UUID`)
+- **Payload (`UpdateExercicioAvulsoSchema`):** Campos opcionais (`titulo`, `temaIds`, `enunciado`, `linkExterno`, `observacao`, `duracaoSegundos`, `desfecho`, `lousaId`).
+- **Resposta `200`:** `ApiSuccessResponse<ExercicioAvulsoDetalheDto>`
+- **Erros:** `404 EXERCICIO_NOT_FOUND`, `400 VALIDATION_ERROR`, `404 TEMA_NOT_FOUND`, `404 LOUSA_NOT_FOUND`, `409 LOUSA_ALREADY_IN_USE`.
+
+#### `DELETE /api/v1/exercicios/:id`
+Exclui o exercício avulso e limpa em cascata qualquer lousa vinculada (banco e Storage).
+
+- **Params:** `id` (`UUID`)
+- **Resposta `200`:** `{ "success": true, "data": { "id": "<uuid>" } }`
+- **Erros:** `404 EXERCICIO_NOT_FOUND`.
+
