@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authRoutes } from '../modules/auth/auth.routes';
 import { cadernoErrosRoutes } from '../modules/caderno-erros/caderno-erros.routes';
+import { exerciciosRoutes } from '../modules/exercicios/exercicios.routes';
 import { healthRoutes } from '../modules/health/health.routes';
 import { lousasRoutes } from '../modules/lousas/lousas.routes';
 import { reflexoesRoutes } from '../modules/temas/reflexoes.routes';
@@ -17,5 +18,7 @@ apiV1Routes.route('/reflexoes', reflexoesRoutes);
 apiV1Routes.route('/caderno-erros', cadernoErrosRoutes);
 apiV1Routes.route('/simulados', simuladosRoutes);
 apiV1Routes.route('/lousas', lousasRoutes);
+apiV1Routes.route('/exercicios', exerciciosRoutes);
 
 export { apiV1Routes };
+
