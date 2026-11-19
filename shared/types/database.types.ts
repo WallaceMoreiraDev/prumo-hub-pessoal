@@ -119,6 +119,86 @@ export type Database = {
           },
         ]
       }
+      exercicio_temas: {
+        Row: {
+          exercicio_id: string
+          tema_id: string
+        }
+        Insert: {
+          exercicio_id: string
+          tema_id: string
+        }
+        Update: {
+          exercicio_id?: string
+          tema_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercicio_temas_exercicio_id_fkey"
+            columns: ["exercicio_id"]
+            isOneToOne: false
+            referencedRelation: "exercicios_avulsos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercicio_temas_tema_id_fkey"
+            columns: ["tema_id"]
+            isOneToOne: false
+            referencedRelation: "temas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exercicios_avulsos: {
+        Row: {
+          created_at: string
+          desfecho: Database["public"]["Enums"]["review_mode_enum"] | null
+          duracao_segundos: number
+          enunciado: string | null
+          id: string
+          link_externo: string | null
+          lousa_id: string | null
+          observacao: string | null
+          titulo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          desfecho?: Database["public"]["Enums"]["review_mode_enum"] | null
+          duracao_segundos?: number
+          enunciado?: string | null
+          id?: string
+          link_externo?: string | null
+          lousa_id?: string | null
+          observacao?: string | null
+          titulo: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          desfecho?: Database["public"]["Enums"]["review_mode_enum"] | null
+          duracao_segundos?: number
+          enunciado?: string | null
+          id?: string
+          link_externo?: string | null
+          lousa_id?: string | null
+          observacao?: string | null
+          titulo?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercicios_avulsos_lousa_id_fkey"
+            columns: ["lousa_id"]
+            isOneToOne: false
+            referencedRelation: "lousas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lousas: {
         Row: {
           created_at: string
@@ -460,6 +540,37 @@ export type Database = {
           p_tema_ids: string[]
         }
         Returns: undefined
+      }
+      rpc_salvar_exercicio_avulso: {
+        Args: {
+          p_desfecho?: Database["public"]["Enums"]["review_mode_enum"]
+          p_duracao_segundos?: number
+          p_enunciado?: string
+          p_link_externo?: string
+          p_lousa_id?: string
+          p_observacao?: string
+          p_tema_ids: string[]
+          p_titulo: string
+        }
+        Returns: {
+          created_at: string
+          desfecho: Database["public"]["Enums"]["review_mode_enum"] | null
+          duracao_segundos: number
+          enunciado: string | null
+          id: string
+          link_externo: string | null
+          lousa_id: string | null
+          observacao: string | null
+          titulo: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "exercicios_avulsos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
